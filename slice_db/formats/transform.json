@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "Definition of transform",
+  "title": "Transform definition",
+  "definitions": {
+    "column": {
+      "description": "Column",
+      "title": "Column",
+      "properties": {
+        "name": {
+          "description": "Name of column",
+          "title": "Name",
+          "type": "string"
+        },
+        "transform": {
+          "description": "Type of transform",
+          "title": "Transform",
+          "type": "string"
+        },
+        "transformParams": {
+          "default": null,
+          "description": "Parameters for transform",
+          "title": "Transform parameters"
+        }
+      },
+      "required": ["transform", "name"],
+      "type": "object"
+    },
+    "table": {
+      "description": "Table",
+      "properties": {
+        "id": {
+          "description": "ID of table",
+          "title": "ID",
+          "type": "string"
+        },
+        "columns": {
+          "description": "Columns. Omitted columns are left untouched.",
+          "items": {
+            "$ref": "#/definitions/column"
+          },
+          "title": "Columns",
+          "type": "array"
+        }
+      },
+      "title": "Table",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "tables": {
+      "description": "Tables. Omitted tables are left untouched.",
+      "items": {
+        "$ref": "#/definitions/table"
+      },
+      "title": "Tables",
+      "type": "array"
+    }
+  },
+  "type": "object"
+}

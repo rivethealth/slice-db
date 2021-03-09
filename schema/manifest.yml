@@ -1,0 +1,25 @@
+#$id: git://github.com/rivethealth/db-slice/manifest.json
+$schema: http://json-schema.org/draft-07/schema
+definitions:
+  table:
+    description: Table
+    title: Table
+    properties:
+      rowCount:
+        description: Count of rows
+        title: Row count
+        type: integer
+      id:
+        description: ID of table
+        title: ID
+        type: string
+    type: object
+description: Snapshot manifest
+properties:
+  tables:
+    description: Tables
+    items: { $ref: "#/definitions/table" }
+    title: Tables
+    type: array
+title: Manifest
+type: object
