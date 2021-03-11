@@ -9,6 +9,7 @@ snapshots = Snapshot()
 snapshots["test_schema 1"] = {
     "references": [
         {
+            "check": "immediate",
             "columns": ["parent_id"],
             "id": "public.child.child_parent_id_fkey",
             "name": "child_parent_id_fkey",

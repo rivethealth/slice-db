@@ -1,2 +1,2 @@
-def transform(args):
+def transform_main(args):
     pass

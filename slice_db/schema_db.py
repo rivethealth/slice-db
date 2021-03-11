@@ -41,6 +41,7 @@ def query_schema(cur):
                         coalesce(
                             json_agg(
                                 json_build_object(
+                                    'check', CASE WHEN pc.condeferrable THEN 'deferrable' ELSE 'immediate' END,
                                     'columns', pa.columns,
                                     'id', pn.nspname || '.' || pc2.relname || '.' || pc.conname,
                                     'name', pc.conname,

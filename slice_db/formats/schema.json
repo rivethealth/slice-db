@@ -3,14 +3,18 @@
   "description": "Definition of slice",
   "title": "Slice definition",
   "definitions": {
+    "column": {
+      "description": "Name of column",
+      "type": "string",
+      "title": "Column"
+    },
     "reference": {
       "description": "Reference to another table, i.e. a foreign key.",
       "title": "Reference",
       "required": [
         "table",
-        "id",
         "columns",
-        "name",
+        "id",
         "referenceColumns",
         "referenceTable"
       ],
@@ -20,16 +24,21 @@
           "title": "Local columns",
           "type": "array",
           "items": {
-            "description": "Column name",
-            "title": "Name",
-            "type": "string"
+            "$ref": "#/definitions/column"
           }
         },
-        "deferrable": {
-          "description": "Whether is deferrable",
-          "default": false,
-          "title": "Deferrable",
-          "type": "boolean"
+        "check": {
+          "$ref": "#/definitions/referenceCheck"
+        },
+        "directions": {
+          "default": ["forward", "reverse"],
+          "description": "Directions to use when discovering rows",
+          "items": {
+            "$ref": "#/definitions/referenceDirection"
+          },
+          "title": "Directions",
+          "type": "array",
+          "uniqueItems": true
         },
         "id": {
           "description": "Unique ID of foreign key",
@@ -37,7 +46,7 @@
           "type": "string"
         },
         "name": {
-          "description": "Name",
+          "description": "Name, if an explicit foreign key",
           "title": "Name",
           "type": "string"
         },
@@ -45,11 +54,8 @@
           "description": "Foreign columns",
           "title": "Foreign columns",
           "items": {
-            "description": "Name of column",
-            "title": "Name",
-            "type": "string"
-          },
-          "type": "array"
+            "$ref": "#/definitions/column"
+          }
         },
         "referenceTable": {
           "description": "ID of foreign table",
@@ -58,6 +64,17 @@
         }
       },
       "type": "object"
+    },
+    "referenceCheck": {
+      "description": "Mode of reference check",
+      "choices": ["deferrable", "immediate"],
+      "title": "Reference check",
+      "type": "string"
+    },
+    "referenceDirection": {
+      "description": "Direction of reference",
+      "choices": ["forward", "reverse"],
+      "type": "string"
     },
     "table": {
       "description": "Table",
@@ -74,11 +91,8 @@
         "columns": {
           "description": "Columns",
           "items": {
-            "description": "Column name",
-            "title": "Name",
-            "type": "string"
-          },
-          "type": "array"
+            "$ref": "#/definitions/column"
+          }
         },
         "schema": {
           "default": null,

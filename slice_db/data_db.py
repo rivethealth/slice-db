@@ -5,12 +5,13 @@ import typing
 import psycopg2.sql as sql
 
 from .formats.manifest import Table as TableManifest
+from .log import TRACE
 from .model import Reference, ReferenceDirection, Table
 from .pg import Tid
 
 
 def get_data(cur, table: Table, ids: typing.List[Tid], out):
-    logging.debug(f"Dumping %s rows from table %s", len(ids), table.id)
+    logging.log(TRACE, f"Dumping %s rows from table %s", len(ids), table.id)
     start = time.perf_counter()
     query = sql.SQL(
         """
@@ -34,11 +35,15 @@ def get_data(cur, table: Table, ids: typing.List[Tid], out):
 
 
 def update_data(cur, table: Table, table_manifest: TableManifest, in_):
-    logging.debug(
-        f"Restoring %s rows into table %s", table_manifest.row_count, table.id
+    logging.log(
+        TRACE, f"Restoring %s rows into table %s", table_manifest.row_count, table.id
     )
     start = time.perf_counter()
-    cur.copy_from(in_, sql.Identifier(table.schema, table.name), columns=table.columns)
+    cur.copy_from(
+        in_,
+        sql.Identifier(table.schema, table.name).as_string(cur),
+        columns=table.columns,
+    )
     end = time.perf_counter()
     logging.debug(
         f"Restored %s rows in table %s (%.3fs)",
@@ -49,7 +54,7 @@ def update_data(cur, table: Table, table_manifest: TableManifest, in_):
 
 
 def get_table_condition(cur, table: Table, condition: str) -> typing.List[Tid]:
-    logging.debug(f"Finding rows from table %s", table.id)
+    logging.log(TRACE, f"Finding rows from table %s", table.id)
     start = time.perf_counter()
     query = sql.SQL(
         """
@@ -84,7 +89,8 @@ def traverse_reference(
         to_columns = reference.columns
         to_table = reference.table
 
-    logging.debug(
+    logging.log(
+        TRACE,
         f"Finding rows from table %s using %s",
         to_table.id,
         reference.id,

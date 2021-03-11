@@ -10,7 +10,7 @@ from ..pg import connection, freeze_transaction, transaction
 from ..schema_db import query_schema
 
 
-def schema(args):
+def schema_main(args):
     with connection("") as conn, transaction(conn) as cur:
         freeze_transaction(cur)
         schema_json = query_schema(cur)

@@ -1,6 +1,10 @@
 import contextlib
+import logging
 import queue
 import threading
+import typing
+
+T = typing.TypeVar("T")
 
 
 class WorkerRunner:
@@ -39,18 +43,25 @@ class WorkerRunner:
     def run(self, items):
         queue_ = queue.Queue()
         status = WorkStatus()
-        threads = []
-        for _ in range(self._parallelism):
-            thread = WorkerThread(queue_, status, self._handler, self._resource)
-            thread.start()
-            threads.append(thread)
+
         for item in items:
             queue_.put(WorkItem(item))
+
+        threads = []
+        workers = []
+        for _ in range(self._parallelism):
+            worker = Worker(queue_, status, self._handler, self._resource)
+            workers.append(worker)
+            thread = threading.Thread(target=worker.run)
+            thread.start()
+            threads.append(thread)
         queue_.join()
         for _ in range(self._parallelism):
             queue_.put(END_ITEM)
         for thread in threads:
-            thread.result()
+            thread.join()
+        for worker in workers:
+            worker.result()
 
 
 """
@@ -59,8 +70,8 @@ End item
 END_ITEM = None
 
 
-class WorkItem:
-    def __init__(self, value):
+class WorkItem(typing.Generic[T]):
+    def __init__(self, value: T):
         self.value = value
 
 
@@ -69,7 +80,7 @@ class WorkStatus:
         self.running = True
 
 
-class WorkerThread(threading.Thread):
+class Worker(typing.Generic[T]):
     def __init__(self, queue: queue.Queue, status: WorkStatus, handler, resource):
         super().__init__()
 
@@ -101,7 +112,6 @@ class WorkerThread(threading.Thread):
             self._drain()
 
     def result(self):
-        self.join()
         if self._exception is not None:
             raise self._exception
 

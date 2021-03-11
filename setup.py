@@ -25,24 +25,16 @@ setuptools.setup(
             "slicedb=slice_db.cli.main:main",
         ]
     },
-    extra_requires={
-        "dev": [
-            "black",
-            "pytest-env",
-            "isort",
-            "pytest",
-            "snapshottest"
-        ]
-    },
+    extra_requires={"dev": ["black", "pytest-env", "isort", "pytest", "snapshottest"]},
     long_description=long_description,
     long_description_content_type="text/markdown",
-    install_requires=["dataclasses_json", "PyYAML"],
+    install_requires=["dataclasses_json"],
     name="slice-db",
     packages=setuptools.find_packages(),
     project_urls={
         "Issues": "https://github.com/rivethealth/slice-db/issues",
     },
-    python_requires='>3.7.0',
+    python_requires=">3.7.0",
     url="https://github.com/rivethealth/slice-db",
     version=version["__version__"],
 )

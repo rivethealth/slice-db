@@ -1,6 +1,8 @@
+import typing
 from contextlib import contextmanager
 
 import psycopg2
+import psycopg2.sql as sql
 
 Snapshot = str
 
@@ -32,3 +34,10 @@ def freeze_transaction(cur, snapshot=None):
     cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
     if snapshot is not None:
         cur.execute("SET TRANSACTION SNAPSHOT %s", [snapshot])
+
+
+def defer_constraints(cur, names: typing.List[typing.List[str]]):
+    query = sql.SQL("SET CONSTRAINTS {} DEFERRED").format(
+        sql.SQL(", ").join(sql.Identifier(*name) for name in names)
+    )
+    cur.execute(query)

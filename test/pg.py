@@ -4,11 +4,11 @@ import subprocess
 import time
 
 import psycopg2
-
+import psycopg2.sql as sql
 
 @contextlib.contextmanager
-def pg_server(name):
-    name = f"db-slice-{name}"
+def open_server():
+    name = "db-slice-test"
     process = subprocess.Popen(
         [
             "docker",
@@ -44,6 +44,17 @@ def pg_server(name):
         code = process.wait()
         if code:
             raise Exception(f"Exited with code {code}")
+
+
+@contextlib.contextmanager
+def open_database(conn, name):
+    with conn.cursor() as cur:
+        cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
+
+    yield
+
+    with conn.cursor() as cur:
+        cur.execute(sql.SQL("DROP DATABASE {}").format(sql.Identifier(name)))
 
 
 @contextlib.contextmanager
