@@ -1,6 +1,7 @@
 import pg
 import pytest
 
+
 @pytest.fixture(scope="session")
 def pg_server():
     with pg.open_server():

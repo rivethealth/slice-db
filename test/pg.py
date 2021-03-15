@@ -6,6 +6,7 @@ import time
 import psycopg2
 import psycopg2.sql as sql
 
+
 @contextlib.contextmanager
 def open_server():
     name = "db-slice-test"

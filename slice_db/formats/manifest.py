@@ -3,19 +3,31 @@ import typing
 
 import dataclasses_json
 
-from ..format import PackageJsonValidator
-
-MANIFEST_VALIDATOR = PackageJsonValidator("slice_db.formats", "manifest.json")
+from ..json import DataJsonFormat, package_json_format
 
 
 @dataclasses_json.dataclass_json(letter_case=dataclasses_json.LetterCase.CAMEL)
-@dataclasses.dataclass(frozen=True)
-class Table:
+@dataclasses.dataclass()
+class TableSegment:
     row_count: int
-    id: str
 
 
 @dataclasses_json.dataclass_json(letter_case=dataclasses_json.LetterCase.CAMEL)
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass()
+class Table:
+    id: str
+    name: str
+    schema: str
+    segments: typing.List[TableSegment]
+
+
+@dataclasses_json.dataclass_json(letter_case=dataclasses_json.LetterCase.CAMEL)
+@dataclasses.dataclass()
 class Manifest:
     tables: typing.List[Table]
+
+
+MANIFEST_JSON_FORMAT = package_json_format("slice_db.formats", "manifest.json")
+
+
+MANIFEST_DATA_JSON_FORMAT = DataJsonFormat(MANIFEST_JSON_FORMAT, Manifest.schema())

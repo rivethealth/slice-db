@@ -2,6 +2,7 @@ import contextlib
 import os
 import tempfile
 
+
 @contextlib.contextmanager
 def temp_file(prefix=None):
     file, name = tempfile.mkstemp(prefix=prefix)

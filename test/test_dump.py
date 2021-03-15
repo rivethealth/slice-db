@@ -6,6 +6,7 @@ from file import temp_file
 from pg import connection, transaction
 from process import run_process
 
+
 def test_dump(pg_database, snapshot):
     schema_sql = """
         CREATE TABLE parent (
@@ -21,7 +22,7 @@ def test_dump(pg_database, snapshot):
     with temp_file("schema-") as schema_file, temp_file("output-") as output_file:
         with connection("") as conn, transaction(conn) as cur:
             cur.execute(schema_sql)
-            
+
             cur.execute(
                 """
                     INSERT INTO parent (id)
@@ -36,10 +37,8 @@ def test_dump(pg_database, snapshot):
             schema_json = {
                 "references": [
                     {
-                        "check": "immediate",
                         "columns": ["parent_id"],
                         "id": "public.child.child_parent_id_fkey",
-                        "name": "child_parent_id_fkey",
                         "referenceColumns": ["id"],
                         "referenceTable": "public.parent",
                         "table": "public.child",
@@ -72,7 +71,7 @@ def test_dump(pg_database, snapshot):
                 "public.parent",
                 "id = 1",
                 "--output",
-                output_file
+                output_file,
             ]
         )
 
@@ -89,7 +88,7 @@ def test_dump(pg_database, snapshot):
             [
                 "slicedb",
                 "restore",
-                "--slice",
+                "--input",
                 output_file,
             ]
         )
@@ -101,4 +100,4 @@ def test_dump(pg_database, snapshot):
 
             cur.execute("TABLE child")
             result = cur.fetchall()
-            assert result == [(1,1), (2,1)]
+            assert result == [(1, 1), (2, 1)]

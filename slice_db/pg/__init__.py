@@ -41,3 +41,12 @@ def defer_constraints(cur, names: typing.List[typing.List[str]]):
         sql.SQL(", ").join(sql.Identifier(*name) for name in names)
     )
     cur.execute(query)
+
+
+def tid_to_int(id: Tid) -> int:
+    """
+    Translate TID to 48-bit integer, where 32 top significant bits are block number,
+    and the other 16 bits are the position within the block
+    """
+    a, b = map(int, id[1:-1].split(","))
+    return a * (2 ** (4 * 8)) + b

@@ -41,7 +41,7 @@ class WorkerRunner:
         self._resource = resource
 
     def run(self, items):
-        queue_ = queue.Queue()
+        queue_ = queue.LifoQueue()
         status = WorkStatus()
 
         for item in items:
@@ -96,7 +96,8 @@ class Worker(typing.Generic[T]):
         """
         while True:
             try:
-                self._queue.get(False)
+                if self._queue.get(False) is END_ITEM:
+                    break
             except queue.Empty:
                 break
             else:
@@ -109,7 +110,7 @@ class Worker(typing.Generic[T]):
         except Exception as e:
             self._exception = e
             self._status.running = False
-            self._drain()
+        self._drain()
 
     def result(self):
         if self._exception is not None:
@@ -120,11 +121,11 @@ class Worker(typing.Generic[T]):
             item = self._queue.get()
             try:
                 if item is END_ITEM:
-                    break
+                    self._shutdown = True
+                    return
                 result = self._handler(item.value, resource)
                 if result is not None:
                     for item in result:
                         self._queue.put(WorkItem(item))
             finally:
                 self._queue.task_done()
-        self._drain()

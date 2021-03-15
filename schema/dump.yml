@@ -1,7 +1,7 @@
 # $id: git://github.com/rivethealth/db-slice/schema.json
-$schema: http://json-schema.org/draft-07/schema#
-description: Definition of slice
-title: Slice definition
+$schema: http://json-schema.org/draft/2019-09/schema#
+description: Definition of slice to dump
+title: Slice dump definition
 definitions:
   column:
     description: Name of column
@@ -17,7 +17,6 @@ definitions:
         title: Local columns
         type: array
         items: { $ref: "#/definitions/column" }
-      check: { $ref: "#/definitions/referenceCheck" }
       directions:
         default: [forward, reverse]
         description: Directions to use when discovering rows
@@ -29,10 +28,6 @@ definitions:
         description: Unique ID of foreign key
         title: ID
         type: string
-      name:
-        description: Name, if an explicit foreign key
-        title: Name
-        type: string
       referenceColumns:
         description: Foreign columns
         title: Foreign columns
@@ -42,11 +37,6 @@ definitions:
         title: Foreign table ID
         type: string
     type: object
-  referenceCheck:
-    description: Mode of reference check
-    choices: [deferrable, immediate]
-    title: Reference check
-    type: string
   referenceDirection:
     description: Direction of reference
     choices: [forward, reverse]

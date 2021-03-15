@@ -28,7 +28,7 @@ setuptools.setup(
     extra_requires={"dev": ["black", "pytest-env", "isort", "pytest", "snapshottest"]},
     long_description=long_description,
     long_description_content_type="text/markdown",
-    install_requires=["dataclasses_json"],
+    install_requires=["dataclasses_json", "numpy"],
     name="slice-db",
     packages=setuptools.find_packages(),
     project_urls={

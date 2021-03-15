@@ -26,7 +26,7 @@ def check_cycle(nodes: typing.List[T], deps_fn: DepFn[T]) -> None:
     stack = []
     stack_set = set()
 
-    def f(nodes):
+    def f(nodes: typing.List[T]):
         for node in nodes:
             if node in visited:
                 return
