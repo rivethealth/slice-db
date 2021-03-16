@@ -25,7 +25,7 @@ setuptools.setup(
             "slicedb=slice_db.cli.main:main",
         ]
     },
-    extra_requires={"dev": ["black", "pytest-env", "isort", "pytest", "snapshottest"]},
+    extras_require={"dev": ["black", "pytest-env", "isort", "pytest", "snapshottest"]},
     long_description=long_description,
     long_description_content_type="text/markdown",
     install_requires=["dataclasses_json", "numpy"],
