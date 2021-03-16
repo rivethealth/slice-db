@@ -38,6 +38,10 @@ def main():
         from .transform import transform_main
 
         transform_main(args)
+    elif args.command == "transform-field":
+        from .transform_field import transform_field_main
+
+        transform_field_main(args)
 
 
 def create_parser():
@@ -72,6 +76,7 @@ def create_parser():
     add_schema_command(subparsers)
     add_schema_filter_command(subparsers)
     add_transform_command(subparsers)
+    add_transform_field_command(subparsers)
 
     return parser
 
@@ -206,6 +211,18 @@ def add_transform_command(subparsers):
     )
     update_help(parser)
     parser.add_argument("--transform", required=True)
+
+
+def add_transform_field_command(subparsers):
+    parser = subparsers.add_parser(
+        "transform-field",
+        description="Transform field",
+        formatter_class=ArgumentFormatter,
+    )
+    update_help(parser)
+    parser.add_argument("--pepper", help="Pepper.")
+    parser.add_argument("--transform", required=True)
+    parser.add_argument("field")
 
 
 def setup_logging(args):

@@ -3,7 +3,9 @@ from __future__ import annotations
 import collections
 import contextlib
 import dataclasses
+import enum
 import logging
+import subprocess
 import threading
 import time
 import typing
@@ -23,28 +25,38 @@ from .formats.manifest import MANIFEST_DATA_JSON_FORMAT, Manifest, ManifestTable
 from .formats.manifest import ManifestTableSegment as TableSegmentManifest
 from .log import TRACE
 from .pg import Tid, export_snapshot, freeze_transaction, tid_to_int, transaction
+from .pg.dump import sections
 from .resource import ResourceFactory
 from .slice import SliceWriter
 
 
+class OutputType(enum.Enum):
+    SQL = enum.auto()
+    SLICE = enum.auto()
+
+
 @dataclasses.dataclass
-class TableSegment:
-    index: int
-    row_ids: typing.List[Tid]
-    table: Table
+class DumpIo:
+    conn: ResourceFactory
+    schema_file: ResourceFactory[typing.TextIO]
+    output: ResourceFactory[typing.BinaryIO]
+
+
+@dataclasses.dataclass
+class DumpParams:
+    parallelism: int
+    output_type: OutputType
 
 
 def dump(
-    conn_fn: ResourceFactory,
-    schema_file_fn: ResourceFactory[typing.TextIO],
     root_configs: typing.List[DumpRoot],
-    parallelism: int,
-    output_fn: ResourceFactory[typing.BinaryIO],
+    io: DumpIo,
+    params: DumpParams,
 ):
     """
     Dump
     """
-    dump_config = DUMP_DATA_JSON_FORMAT.load(schema_file_fn)
+    dump_config = DUMP_DATA_JSON_FORMAT.load(io.schema_file)
     schema = Schema(dump_config)
     roots = []
     for root_config in root_configs:
@@ -54,11 +66,25 @@ def dump(
             raise Exception(f"Root table {root_config.table} does not exist")
         roots.append(Root(table=table, condition=sql.SQL(root_config.condition)))
 
-    with output_fn() as file, SliceWriter(file) as writer:
+    with io.output() as file, contextlib.ExitStack() as stack:
+        if params.output_type == OutputType.SLICE:
+            slice_writer = stack.enter_context(SliceWriter(file))
+            output = _SliceOutput(slice_writer)
+        elif params.output_type == OutputType.SQL:
+            pg_dump = subprocess.run(
+                ["pg_dump", "-s"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                check=True,
+            )
+            pg_sections = sections(pg_dump.stdout.decode("utf-8"))
+            file.write(pg_sections.predata.encode("utf-8"))
+            output = _SqlOutput(file)
+
         result = _DiscoveryResult()
 
-        with conn_fn() as conn, transaction(conn) as cur:
-            if parallelism == 1:
+        with io.conn() as conn, transaction(conn) as cur:
+            if params.parallelism == 1:
                 freeze_transaction(cur)
 
                 def pg_manager():
@@ -70,15 +96,17 @@ def dump(
 
                 @contextlib.contextmanager
                 def pg_manager():
-                    with conn_fn() as conn, transaction(conn) as cur:
+                    with io.conn() as conn, transaction(conn) as cur:
                         freeze_transaction(cur, snapshot=snapshot)
                         yield cur
 
-            _dump_rows(roots, parallelism, pg_manager, result, writer)
+            _dump_rows(roots, params.parallelism, pg_manager, result, output)
 
-        manifest = Manifest(tables=result.table_manifests())
-
-        MANIFEST_DATA_JSON_FORMAT.dump(writer.open_manifest, manifest)
+        if params.output_type == OutputType.SLICE:
+            manifest = Manifest(tables=result.table_manifests())
+            MANIFEST_DATA_JSON_FORMAT.dump(slice_writer.open_manifest, manifest)
+        elif params.output_type == OutputType.SQL:
+            file.write(pg_sections.postdata.encode("utf-8"))
 
 
 def _dump_rows(
@@ -86,12 +114,11 @@ def _dump_rows(
     parallelism: int,
     cur_resource: ResourceFactory,
     result,
-    writer: SliceWriter,
+    output: typing.Union[_SliceOutput, _SqlOutput],
 ):
     """
     Dump rows
     """
-    output = _Output(writer)
 
     logging.info("Dumping rows")
     start = time.perf_counter()
@@ -104,7 +131,7 @@ def _dump_rows(
     logging.info("Dumping %d rows (%.3fs)", result.row_count, end - start)
 
 
-class _Output:
+class _SliceOutput:
     """
     Thread-safe dump output
     """
@@ -114,12 +141,36 @@ class _Output:
         self._writer = writer
 
     @contextlib.contextmanager
-    def open_segment(self, table_id: str, index: int):
+    def open_segment(self, segment: _TableSegment):
         """
         Open segment for writing
         """
-        with self._lock, self._writer.open_segment(table_id, index) as f:
+        with self._lock, self._writer.open_segment(
+            segment.table.id, segment.index
+        ) as f:
             yield f
+
+
+class _SqlOutput:
+    def __init__(self, file):
+        self._file = file
+        self._lock = threading.Lock()
+
+    @contextlib.contextmanager
+    def open_segment(self, segment: _TableSegment):
+        with self._lock:
+            self._file.write("--\n".encode("utf-8"))
+            self._file.write(
+                f"-- Data for {segment.table.id}/{segment.index}\n".encode("utf-8")
+            )
+            self._file.write("--\n".encode("utf-8"))
+            self._file.write(
+                f"COPY {segment.table.schema}.{segment.table.name} ({', '.join(segment.table.columns)}) FROM stdin;\n".encode(
+                    "utf-8"
+                )
+            )
+            yield self._file
+            self._file.write("\\.\n\n\n".encode("utf-8"))
 
 
 class _DiscoveryResult:
@@ -138,7 +189,7 @@ class _DiscoveryResult:
 
     def add(
         self, table: Table, row_ids: typing.List[Tid]
-    ) -> typing.Optional[TableSegment]:
+    ) -> typing.Optional[_TableSegment]:
         """
         Add IDs and return list of newly added segment
         """
@@ -169,7 +220,7 @@ class _DiscoveryResult:
                     segments=[],
                 )
             table_manifest = self._table_manifests[table.id]
-            segment = TableSegment(
+            segment = _TableSegment(
                 table=table, row_ids=new_ids, index=len(table_manifest.segments)
             )
             table_manifest.segments.append(TableSegmentManifest(row_count=len(new_ids)))
@@ -204,12 +255,12 @@ class _ReferenceItem:
     """Direction"""
     reference: Reference
     """Reference"""
-    segment: TableSegment
+    segment: _TableSegment
     """Source segment"""
 
 
 class _Dump:
-    def __init__(self, result: _DiscoveryResult, output: _Output):
+    def __init__(self, result: _DiscoveryResult, output: _SliceOutput):
         self._result = result
         self._output = output
 
@@ -240,12 +291,12 @@ class _Dump:
 
             yield from self._table_items(segment, reference_item=item)
 
-        with self._output.open_segment(segment.table.id, segment.index) as f:
+        with self._output.open_segment(segment) as f:
             _dump_data(cur, to_table, segment.row_ids, f)
 
     def _table_items(
         self,
-        segment: TableSegment,
+        segment: _TableSegment,
         reference_item: _ReferenceItem = None,
     ):
         """
@@ -324,6 +375,13 @@ class Reference:
     reference_table: Table
     """Reference columns"""
     reference_columns: typing.List[str]
+
+
+@dataclasses.dataclass
+class _TableSegment:
+    index: int
+    row_ids: typing.List[Tid]
+    table: Table
 
 
 class Schema:
@@ -462,7 +520,7 @@ def _discover_reference(
     cur,
     reference: Reference,
     direction: DumpReferenceDirection,
-    segment: TableSegment,
+    segment: _TableSegment,
     result,
 ) -> typing.List[Tid]:
     """

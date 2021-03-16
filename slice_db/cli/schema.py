@@ -8,4 +8,4 @@ def schema_main(args):
     with connection("") as conn, transaction(conn) as cur:
         schema_json = query_schema(cur)
 
-    DUMP_JSON_FORMAT.dump(lambda: open_str_write(args.output), schema_json)
+    DUMP_JSON_FORMAT.dump(lambda: open_str_write(args.output), schema_json, pretty=True)
