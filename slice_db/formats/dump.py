@@ -12,7 +12,10 @@ class DumpReferenceDirection(enum.Enum):
     REVERSE = "reverse"
 
 
-@dataclasses_json.dataclass_json(letter_case=dataclasses_json.LetterCase.CAMEL)
+@dataclasses_json.dataclass_json(
+    letter_case=dataclasses_json.LetterCase.CAMEL,
+    undefined=dataclasses_json.Undefined.EXCLUDE,
+)
 @dataclasses.dataclass
 class DumpReference:
     columns: typing.List[str]
@@ -27,7 +30,10 @@ class DumpReference:
     deferrable: bool = False
 
 
-@dataclasses_json.dataclass_json(letter_case=dataclasses_json.LetterCase.CAMEL)
+@dataclasses_json.dataclass_json(
+    letter_case=dataclasses_json.LetterCase.CAMEL,
+    undefined=dataclasses_json.Undefined.EXCLUDE,
+)
 @dataclasses.dataclass
 class DumpTable:
     columns: typing.List[str]
@@ -36,7 +42,10 @@ class DumpTable:
     schema: typing.Optional[str]
 
 
-@dataclasses_json.dataclass_json(letter_case=dataclasses_json.LetterCase.CAMEL)
+@dataclasses_json.dataclass_json(
+    letter_case=dataclasses_json.LetterCase.CAMEL,
+    undefined=dataclasses_json.Undefined.EXCLUDE,
+)
 @dataclasses.dataclass
 class DumpSchema:
     references: typing.List[DumpReference]

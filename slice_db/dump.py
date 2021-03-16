@@ -505,7 +505,7 @@ def _discover_table_condition(
         )
     else:
         logging.debug(
-            f"Found %s rows (%s new) as %s/%s in table %s (%.3fs)",
+            f"Found %s rows (%s new) as %s/%s (%.3fs)",
             len(found_ids),
             len(segment.row_ids),
             segment.table.id,
@@ -561,13 +561,15 @@ def _discover_reference(
     )
     cur.execute(query, [segment.row_ids])
     found_ids = [id_ for id_, in cur.fetchall()]
-    segment = result.add(to_table, found_ids) if found_ids else None
+    new_segment = result.add(to_table, found_ids) if found_ids else None
     end = time.perf_counter()
-    if segment is None:
+    if new_segment is None:
         logging.debug(
             f"Found %s rows (no new) in table %s using %s/%s via %s (%.3fs)",
             len(found_ids),
             to_table.id,
+            segment.table.id,
+            segment.index,
             reference.id,
             end - start,
         )
@@ -575,11 +577,13 @@ def _discover_reference(
         logging.debug(
             f"Found %s rows (%s new) as %s/%s using %s/%s via %s (%.3fs)",
             len(found_ids),
-            len(segment.row_ids),
+            len(new_segment.row_ids),
+            new_segment.table.id,
+            new_segment.index,
             segment.table.id,
             segment.index,
             reference.id,
             end - start,
         )
 
-    return segment
+    return new_segment

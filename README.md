@@ -77,13 +77,13 @@ The slicing process works as follows:
 3. For new IDs, process each of the adjacent tables, using them as the current
    root.
 
-4. Write out the manifest of tables as a ZIP entry.
-
-5. For each table part, query the data, transforming it as necessary, and write
-   it to a new ZIP entry.
-
 Do this in parallel, using `pg_export_snapshot()` to guarantee a consistent
 snapshot across workers.
+
+### Performance
+
+Hundreds of thousands of rows can be exported in only a few minutes and several
+dozen MBs of memory.
 
 ## Transformation
 
