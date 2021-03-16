@@ -27,7 +27,9 @@ Third, restore that slice into another database:
 slicedb restore < slice.zip
 ```
 
-See [#Example](Example).
+For a complete example, see [Example](#Example).
+
+For full options, see [Usage](doc/usage.md).
 
 ## Connection
 
@@ -58,11 +60,9 @@ See formats/schema.yml for the JSONSchema of the schema file.
 The `schema` command uses foreign keys to infer relationships between tables. It
 is a suggested starting point.
 
-You may want to prune the slice by removing relationships, or expand the slice
-by adding relationships that don't have explicit foreign keys.
+You may want to prune the slice by removing relationships, or expand the slice by adding relationships that don't have explicit foreign keys.
 
-`slicedb schema-filter` can help modify the schema, or generic JSON tools like
-`jq`.
+`slicedb schema-filter` can help modify the schema, or generic JSON tools like `jq`.
 
 ### Algorithm
 
