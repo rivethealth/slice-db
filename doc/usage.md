@@ -1,6 +1,7 @@
 # Usage
 
 ## common
+
 ```sh
 usage: slicedb [-h] [--log-level {error,info,debug,trace}] [-v]
                {dump,restore,schema,schema-filter,transform,transform-field} ...
@@ -19,6 +20,7 @@ subcommands:
 ```
 
 ## dump
+
 ```sh
 usage: slicedb dump [-h] [--include-schema] [-j JOBS] [-o OUTPUT] [--output-type {slice,sql}]
                     [--pepper PEPPER] [--transform TRANSFORM] [-r TABLE CONDITION] -s SCHEMA
@@ -43,6 +45,7 @@ required arguments:
 ```
 
 ## restore
+
 ```sh
 usage: slicedb restore [-h] [--disable-triggers] [-j JOBS] [-i INPUT] [--transaction]
 
@@ -58,6 +61,7 @@ optional arguments:
 ```
 
 ## schema
+
 ```sh
 usage: slicedb schema [-h] [-o OUTPUT]
 
@@ -69,6 +73,7 @@ optional arguments:
 ```
 
 ## schema-filter
+
 ```sh
 usage: slicedb schema-filter [-h] [-i INPUT] [-o OUTPUT] {children} ...
 
@@ -84,6 +89,7 @@ subcommands:
 ```
 
 ## transform
+
 ```sh
 usage: slicedb transform [-h] --transform TRANSFORM
 
@@ -95,6 +101,7 @@ optional arguments:
 ```
 
 ## transform-field
+
 ```sh
 usage: slicedb transform-field [-h] [--pepper PEPPER] --transform TRANSFORM field
 
@@ -108,4 +115,3 @@ optional arguments:
   --pepper PEPPER        Pepper.
   --transform TRANSFORM
 ```
-

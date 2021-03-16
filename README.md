@@ -5,9 +5,11 @@
 SliceDB is a tool for capturing and restoring a subset of a PostgreSQL database.
 It also supports scrubbing sensive data.
 
-Keywords: Database subset, scrubbing, PostgreSQL
+## Usage
 
-## Basic usage
+For all commands and options, see [Usage](doc/usage.md).
+
+## Basic example
 
 First, query a database to create a schema file.
 
@@ -27,9 +29,7 @@ Third, restore that slice into another database:
 slicedb restore < slice.zip
 ```
 
-For a complete example, see [Example](#Example).
-
-For full options, see [Usage](doc/usage.md).
+For a complete working example, see [Example](doc/example.md).
 
 ## Connection
 
@@ -60,9 +60,11 @@ See formats/schema.yml for the JSONSchema of the schema file.
 The `schema` command uses foreign keys to infer relationships between tables. It
 is a suggested starting point.
 
-You may want to prune the slice by removing relationships, or expand the slice by adding relationships that don't have explicit foreign keys.
+You may want to prune the slice by removing relationships, or expand the slice
+by adding relationships that don't have explicit foreign keys.
 
-`slicedb schema-filter` can help modify the schema, or generic JSON tools like `jq`.
+`slicedb schema-filter` can help modify the schema, or generic JSON tools like
+`jq`.
 
 ### Algorithm
 
@@ -132,67 +134,3 @@ multiple transactions.
 
 - Multiple databases
 - Databases other than PostgreSQL
-
-## Example
-
-<details>
-<summary>Run PostgreSQL</summary>
-
-```sh
-docker run -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_USER="$USER" -p 5432:5432 --rm postgres
-```
-
-```sh
-PGHOST=localhost createdb source
-
-PGHOST=localhost PGDATABASE=source psql -c '
-CREATE TABLE parent (
-    id int PRIMARY KEY
-);
-
-CREATE TABLE child (
-    id int PRIMARY KEY,
-    parent_id int REFERENCES parent (id)
-);
-
-INSERT INTO parent (id)
-VALUES (1), (2);
-
-INSERT INTO child (id, parent_id)
-VALUES (1, 1), (2, 1), (3, 2);
-'
-
-PGHOST=localhost createdb target
-
-PGHOST=localhost PGDATABASE=target psql -c '
-CREATE TABLE parent (
-    id int PRIMARY KEY
-);
-
-CREATE TABLE child (
-    id int PRIMARY KEY,
-    parent_id int REFERENCES parent (id)
-);
-'
-```
-
-</details>
-
-<details>
-<summary>Dump a slice</summary>
-
-```sh
-PGHOST=localhost PGDATABASE=source slicedb schema > schema.json
-PGHOST=localhost PGDATABASE=source slicedb dump --root public.parent 'id = 1' --schema schema.json > slice.zip
-```
-
-</details>
-
-<details>
-<summary>Restore a slice</summary>
-
-```sh
-PGHOST=localhost PGDATABASE=target slicedb restore < slice.zip
-```
-
-</details>
