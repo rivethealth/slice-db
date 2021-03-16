@@ -1,9 +1,18 @@
 #$id: git://github.com/rivethealth/db-slice/manifest.json
 $schema: http://json-schema.org/draft/2019-09/schema#
 definitions:
+  column:
+    description: Name of column
+    type: string
+    title: Column
   table:
     description: Table manifest
     properties:
+      columns:
+        description: Columns of table
+        items: { $ref: "#/definitions/column" }
+        title: Column
+        type: array
       id:
         description: ID of table
         title: ID

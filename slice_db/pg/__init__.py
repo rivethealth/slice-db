@@ -36,7 +36,7 @@ def freeze_transaction(cur, snapshot=None):
         cur.execute("SET TRANSACTION SNAPSHOT %s", [snapshot])
 
 
-def defer_constraints(cur, names: typing.List[typing.List[str]]):
+def defer_constraints(cur, names: typing.List[typing.Tuple[str, str]]):
     query = sql.SQL("SET CONSTRAINTS {} DEFERRED").format(
         sql.SQL(", ").join(sql.Identifier(*name) for name in names)
     )

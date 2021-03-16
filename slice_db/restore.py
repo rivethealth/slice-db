@@ -1,5 +1,6 @@
 import contextlib
 import dataclasses
+import itertools
 import json
 import logging
 import time
@@ -8,13 +9,18 @@ import zipfile
 
 import psycopg2.sql as sql
 
+from .collection.dict import groups
 from .concurrent.graph import GraphRunner
 from .formats.dump import DumpSchema
-from .formats.manifest import Manifest
-from .formats.manifest import Table as TableManifest
-from .formats.manifest import TableSegment as TableSegmentManifest
+from .formats.manifest import (
+    MANIFEST_DATA_JSON_FORMAT,
+    Manifest,
+    ManifestTable,
+    ManifestTableSegment,
+)
 from .log import TRACE
 from .pg import defer_constraints, transaction
+from .resource import NoArgs
 from .slice import SliceReader
 
 
@@ -24,85 +30,60 @@ class RestoreParams:
     transaction: bool
 
 
-class NoArgs:
-    def __init__(self, fn):
-        self._fn = fn
-        self._resource = None
-
-    def __enter__(self, *args, **kwargs):
-        self._resource = self._fn()
-        return self._resource.__enter__(*args, **kwargs)
-
-    def __exit__(self, *args, **kwargs):
-        self._resource.__exit__(*args, **kwargs)
-        self._resource = None
-
-
 def restore(conn_fn, params, file_fn):
     if params.parallelism > 1 and params.transaction:
         raise Exception("A single transaction must be disabled for parallelism > 1")
 
-    @contextlib.contextmanager
-    def cur_factory():
-        with conn_fn() as conn:
+    with file_fn() as file, SliceReader(file) as reader:
+        manifest = MANIFEST_DATA_JSON_FORMAT.load(reader.open_manifest)
+        manifest_tables = {table.id: table for table in manifest.tables}
+
+        items = {id: RestoreItem(table=table) for id, table in manifest_tables.items()}
+        restore = Restore(reader)
+
+        with conn_fn() as conn, transaction(conn) as cur:
             if params.transaction:
-                with transaction(conn) as cur:
-                    yield contextlib.nullcontext(cur)
+
+                def cur_factory():
+                    return contextlib.nullcontext(contextlib.nullcontext(cur))
+
             else:
 
                 @contextlib.contextmanager
-                def pg_transaction():
-                    with transaction(conn) as cur:
-                        yield cur
+                def cur_factory():
+                    with conn_fn() as conn:
+                        yield NoArgs(lambda: transaction(conn))
 
-                yield NoArgs(pg_transaction)
+            runner = GraphRunner(params.parallelism, restore.process, cur_factory)
 
-    with file_fn() as file, SliceReader(file) as slice:
-        with slice.open_manifest() as file:
-            manifest_json = json.load(file)
-        manifest = Manifest.schema().load(manifest_json)
-        manifest_tables = {table.id: table for table in manifest.tables}
+            constraints = get_constaints(cur, list(manifest_tables.values()))
+            deferrable_constaints = [
+                [constraint.schema, constraint.name]
+                for constraint in constraints
+                if constraint.deferrable
+            ]
 
-        items = {
-            id: RestoreItem(table=table, manifest=manifest_tables.get(id))
-            for id, table in schema._tables.items()
-        }
-        restore = Restore(zip)
-        runner = GraphRunner(params.parallelism, restore.process, cur_factory)
+            if deferrable_constaints:
+                logging.info("Deferring %d constraints", len(deferrable_constaints))
+                defer_constraints(cur, deferrable_constaints)
 
-        with cur_factory() as conn:
-            with conn as cur:
-                constraints = []
-                for table_id in manifest_tables.keys():
-                    table = schema.get_table(table_id)
-                    for reference in table.references:
-                        if reference.check != ReferenceCheck.DEFERRABLE:
-                            continue
-                        if reference.reference_table.id not in manifest_tables:
-                            continue
-                        if reference.name is None:
-                            raise Exception(
-                                f"Missing name for deferrable reference {reference.id}"
-                            )
-                        constraints.append([reference.table.schema, reference.name])
-                if constraints:
-                    logging.info("Defering %d constraints", len(constraints))
-                    defer_constraints(cur, constraints)
+            deps = groups(
+                (constraint for constraint in constraints if not constraint.deferrable),
+                lambda constraint: constraint.table,
+            )
 
-        runner.run(
-            list(items.values()),
-            lambda item: [
-                items[reference.reference_table.id]
-                for reference in item.table.references
-                if 1 < params.parallelism or reference.check == ReferenceCheck.IMMEDIATE
-            ],
-        )
+            runner.run(
+                list(items.values()),
+                lambda item: [
+                    items[foreign_key.reference_table]
+                    for foreign_key in deps[item.table.id]
+                ],
+            )
 
 
 @dataclasses.dataclass
 class RestoreItem:
-    table: Table
-    manifest: typing.Optional[TableSegmentManifest]
+    table: ManifestTable
 
     def __hash__(self):
         return id(self)
@@ -113,22 +94,22 @@ class Restore:
         self._slice_reader = slice_reader
 
     def process(self, item: RestoreItem, transaction):
-        if item.manifest is None:
-            return
-
-        with transaction as cur, self._slice_reader.open_segment(
-            item.table.id
-        ) as entry:
-            update_data(cur, item.table, item.manifest, entry)
+        with transaction as cur:
+            for i, segment in enumerate(item.table.segments):
+                with self._slice_reader.open_segment(
+                    item.table.id,
+                    i,
+                ) as file:
+                    update_data(cur, item.table, i, segment, file)
 
 
 _BUFFER_SIZE = 1024 * 32
 
 
-def update_data(cur, table: Table, table_manifest: TableManifest, in_):
-    logging.log(
-        TRACE, f"Restoring %s rows into table %s", table_manifest.row_count, table.id
-    )
+def update_data(
+    cur, table: ManifestTable, index: int, segment: ManifestTableSegment, in_
+):
+    logging.log(TRACE, f"Restoring %s rows into table %s", segment.row_count, table.id)
     start = time.perf_counter()
     cur.copy_from(
         in_,
@@ -139,13 +120,29 @@ def update_data(cur, table: Table, table_manifest: TableManifest, in_):
     end = time.perf_counter()
     logging.debug(
         f"Restored %s rows in table %s (%.3fs)",
-        table_manifest.row_count,
+        segment.row_count,
         table.id,
         end - start,
     )
 
 
-def get_constaints(cur, schema: Schema):
+@dataclasses.dataclass
+class ForeignKey:
+    deferrable: bool
+    """Deferrable"""
+    name: str
+    """Name"""
+    schema: str
+    """Schema"""
+    table: str
+    """Table ID"""
+    reference_table: str
+    """Referenced table ID"""
+
+
+def get_constaints(
+    cur, manifest_tables: typing.List[ManifestTable]
+) -> typing.List[ForeignKey]:
     """
     Query PostgreSQL for constraints between tables
     """
@@ -154,7 +151,7 @@ def get_constaints(cur, schema: Schema):
             WITH
                 "table" AS (
                     SELECT *
-                    FROM unnest(%s::string[], %s::string[], %s::string[]) AS t (id, schema, name)
+                    FROM unnest(%s::text[], %s::text[], %s::text[]) AS t (id, schema, name)
                 )
             SELECT
                 pn.nspname,
@@ -173,13 +170,22 @@ def get_constaints(cur, schema: Schema):
             WHERE pc.contype = 'f'
         """,
         [
-            [table.id for table in schema.tables()],
-            [table.schema for table in schema.tables()],
-            [table.name for table in schema.tables()],
+            [table.id for table in manifest_tables],
+            [table.schema for table in manifest_tables],
+            [table.name for table in manifest_tables],
         ],
     )
 
+    foreign_keys = []
     for schema, name, table, reference_table, deferrable in cur.fetchall():
-        pass
+        foreign_keys.append(
+            ForeignKey(
+                deferrable=deferrable,
+                name=name,
+                reference_table=reference_table,
+                schema=schema,
+                table=table,
+            )
+        )
 
-    return schema_json
+    return foreign_keys

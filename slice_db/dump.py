@@ -19,9 +19,8 @@ from .formats.dump import (
     DumpRoot,
     DumpSchema,
 )
-from .formats.manifest import MANIFEST_DATA_JSON_FORMAT, Manifest
-from .formats.manifest import Table as TableManifest
-from .formats.manifest import TableSegment as TableSegmentManifest
+from .formats.manifest import MANIFEST_DATA_JSON_FORMAT, Manifest, ManifestTable
+from .formats.manifest import ManifestTableSegment as TableSegmentManifest
 from .log import TRACE
 from .pg import Tid, export_snapshot, freeze_transaction, tid_to_int, transaction
 from .resource import ResourceFactory
@@ -129,7 +128,7 @@ class _DiscoveryResult:
     """
 
     _row_ids: typing.DefaultDict[str, IntSet]
-    _table_manifests: typing.Dict[str, TableManifest]
+    _table_manifests: typing.Dict[str, ManifestTable]
 
     def __init__(self):
         self._id_count = 0
@@ -149,7 +148,7 @@ class _DiscoveryResult:
             new_ints = []
             for id_ in row_ids:
                 id_int = tid_to_int(id_)
-                if id_ in existing_ids:
+                if id_int in existing_ids:
                     continue
                 new_ids.append(id_)
                 new_ints.append(id_int)
@@ -162,8 +161,12 @@ class _DiscoveryResult:
             self._id_count += len(new_ids)
 
             if table.id not in self._table_manifests:
-                self._table_manifests[table.id] = TableManifest(
-                    name=table.name, schema=table.schema, id=table.id, segments=[]
+                self._table_manifests[table.id] = ManifestTable(
+                    columns=table.columns,
+                    id=table.id,
+                    name=table.name,
+                    schema=table.schema,
+                    segments=[],
                 )
             table_manifest = self._table_manifests[table.id]
             segment = TableSegment(
@@ -182,7 +185,7 @@ class _DiscoveryResult:
 
     def table_manifests(self):
         """
-        Iterable of TableManifests
+        Iterable of ManifestTables
         """
         return self._table_manifests.values()
 
@@ -227,13 +230,15 @@ class _Dump:
             segment = _discover_reference(
                 cur, item.reference, item.direction, item.segment, self._result
             )
-            if segment:
-                if item.direction == DumpReferenceDirection.FORWARD:
-                    to_table = item.reference.reference_table
-                elif item.direction == DumpReferenceDirection.REVERSE:
-                    to_table = item.reference.table
+            if segment is None:
+                return
 
-                yield from self._table_items(segment, reference_item=item)
+            if item.direction == DumpReferenceDirection.FORWARD:
+                to_table = item.reference.reference_table
+            elif item.direction == DumpReferenceDirection.REVERSE:
+                to_table = item.reference.table
+
+            yield from self._table_items(segment, reference_item=item)
 
         with self._output.open_segment(segment.table.id, segment.index) as f:
             _dump_data(cur, to_table, segment.row_ids, f)
@@ -293,8 +298,10 @@ class Table:
     id: str
     """ID"""
     name: str
+    """Name"""
     schema: str
-    columns: str
+    """Schema"""
+    columns: typing.List[str]
     """Columns"""
     references: typing.List[Reference]
     """References to parent tables"""
