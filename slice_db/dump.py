@@ -5,7 +5,9 @@ import contextlib
 import dataclasses
 import enum
 import logging
+import shutil
 import subprocess
+import tempfile
 import threading
 import time
 import typing
@@ -21,13 +23,17 @@ from .formats.dump import (
     DumpRoot,
     DumpSchema,
 )
-from .formats.manifest import MANIFEST_DATA_JSON_FORMAT, Manifest, ManifestTable
-from .formats.manifest import ManifestTableSegment as TableSegmentManifest
+from .formats.manifest import (
+    MANIFEST_DATA_JSON_FORMAT,
+    Manifest,
+    ManifestTable,
+    ManifestTableSegment,
+)
 from .log import TRACE
 from .pg import Tid, export_snapshot, freeze_transaction, tid_to_int, transaction
-from .pg.dump import sections
 from .resource import ResourceFactory
 from .slice import SliceWriter
+from .sql import SqlWriter
 
 
 class OutputType(enum.Enum):
@@ -71,15 +77,10 @@ def dump(
             slice_writer = stack.enter_context(SliceWriter(file))
             output = _SliceOutput(slice_writer)
         elif params.output_type == OutputType.SQL:
-            pg_dump = subprocess.run(
-                ["pg_dump", "-s"],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                check=True,
-            )
-            pg_sections = sections(pg_dump.stdout.decode("utf-8"))
-            file.write(pg_sections.predata.encode("utf-8"))
-            output = _SqlOutput(file)
+            sql_writer = SqlWriter(file)
+            with sql_writer.open_predata() as f:
+                _pg_dump_section("pre-data", f)
+            output = _SqlOutput(sql_writer)
 
         result = _DiscoveryResult()
 
@@ -106,7 +107,20 @@ def dump(
             manifest = Manifest(tables=result.table_manifests())
             MANIFEST_DATA_JSON_FORMAT.dump(slice_writer.open_manifest, manifest)
         elif params.output_type == OutputType.SQL:
-            file.write(pg_sections.postdata.encode("utf-8"))
+            with sql_writer.open_postdata() as f:
+                _pg_dump_section("post-data", f)
+
+
+def _pg_dump_section(section: str, out: typing.BinaryIO) -> str:
+    logging.log(TRACE, "Dumping %s schema", section)
+    start = time.perf_counter()
+    subprocess.check_call(
+        ["pg_dump", "-B", "--no-acl", "--section", section],
+        stdin=subprocess.DEVNULL,
+        stdout=out,
+    )
+    end = time.perf_counter()
+    logging.debug("Dumped %s schema (%.3fs)", section, end - start)
 
 
 def _dump_rows(
@@ -128,12 +142,12 @@ def _dump_rows(
         [_RootItem(table=root.table, condition=root.condition) for root in roots]
     )
     end = time.perf_counter()
-    logging.info("Dumping %d rows (%.3fs)", result.row_count, end - start)
+    logging.info("Dumped %d rows (%.3fs)", result.row_count, end - start)
 
 
 class _SliceOutput:
     """
-    Thread-safe dump output
+    Thread-safe slice output
     """
 
     def __init__(self, writer: SliceWriter):
@@ -152,25 +166,24 @@ class _SliceOutput:
 
 
 class _SqlOutput:
-    def __init__(self, file):
-        self._file = file
+    """
+    Thread-safe SQL output
+    """
+
+    def __init__(self, writer: SqlWriter):
         self._lock = threading.Lock()
+        self._writer = writer
 
     @contextlib.contextmanager
     def open_segment(self, segment: _TableSegment):
-        with self._lock:
-            self._file.write("--\n".encode("utf-8"))
-            self._file.write(
-                f"-- Data for {segment.table.id}/{segment.index}\n".encode("utf-8")
-            )
-            self._file.write("--\n".encode("utf-8"))
-            self._file.write(
-                f"COPY {segment.table.schema}.{segment.table.name} ({', '.join(segment.table.columns)}) FROM stdin;\n".encode(
-                    "utf-8"
-                )
-            )
-            yield self._file
-            self._file.write("\\.\n\n\n".encode("utf-8"))
+        with self._lock, self._writer.open_data(
+            segment.table.id,
+            segment.index,
+            segment.table.schema,
+            segment.table.name,
+            segment.table.columns,
+        ) as f:
+            yield f
 
 
 class _DiscoveryResult:
@@ -195,20 +208,14 @@ class _DiscoveryResult:
         """
         with self._lock:
             existing_ids = self._row_ids[table.id]
-            new_ids = []
-            new_ints = []
-            for id_ in row_ids:
-                id_int = tid_to_int(id_)
-                if id_int in existing_ids:
-                    continue
-                new_ids.append(id_)
-                new_ints.append(id_int)
+            ints = [tid_to_int(id) for id in row_ids]
+            contains = existing_ids.contains(ints)
+            new_ids = [id for id, c in zip(row_ids, contains) if not c]
 
             if not new_ids:
                 return
 
-            existing_ids.add(new_ints)
-
+            existing_ids.add([int for int, c in zip(ints, contains) if not c])
             self._id_count += len(new_ids)
 
             if table.id not in self._table_manifests:
@@ -220,10 +227,11 @@ class _DiscoveryResult:
                     segments=[],
                 )
             table_manifest = self._table_manifests[table.id]
+
             segment = _TableSegment(
                 table=table, row_ids=new_ids, index=len(table_manifest.segments)
             )
-            table_manifest.segments.append(TableSegmentManifest(row_count=len(new_ids)))
+            table_manifest.segments.append(ManifestTableSegment(row_count=len(new_ids)))
 
         return segment
 
@@ -291,8 +299,11 @@ class _Dump:
 
             yield from self._table_items(segment, reference_item=item)
 
-        with self._output.open_segment(segment) as f:
-            _dump_data(cur, to_table, segment.row_ids, f)
+        with tempfile.TemporaryFile() as tmp:
+            _dump_data(cur, to_table, segment.row_ids, tmp)
+            tmp.seek(0)
+            with self._output.open_segment(segment) as f:
+                shutil.copyfileobj(tmp, f)
 
     def _table_items(
         self,
@@ -561,6 +572,22 @@ def _discover_reference(
     )
     cur.execute(query, [segment.row_ids])
     found_ids = [id_ for id_, in cur.fetchall()]
+
+    if "account_id" in to_table.columns:
+        query = sql.SQL(
+            """
+            SELECT account_id
+            FROM {}
+            WHERE ctid = ANY(%s::tid[]) AND account_id <> 3439
+        """
+        ).format(
+            sql.Identifier(to_table.schema, to_table.name),
+        )
+        cur.execute(query, [found_ids])
+        x = cur.fetchall()
+        if x:
+            raise Exception(f"{to_table.id} Account {x[0][0]}")
+
     new_segment = result.add(to_table, found_ids) if found_ids else None
     end = time.perf_counter()
     if new_segment is None:
