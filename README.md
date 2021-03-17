@@ -1,5 +1,7 @@
 # SliceDB
 
+[![PyPI](https://img.shields.io/pypi/v/slice-db)](https://pypi.org/project/slice-db/)
+
 ## Overview
 
 SliceDB is a tool for capturing and restoring a subset of a PostgreSQL database.
