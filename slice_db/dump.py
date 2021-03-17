@@ -63,18 +63,15 @@ def dump(
     """
     Dump
     """
-    if params.output_type == OutputType.SLICE and params.include_schema:
-        raise Exception("--output-type=slice is incompatable with --include-schema")
-
     dump_config = DUMP_DATA_JSON_FORMAT.load(io.schema_file)
-    schema = _Schema(dump_config)
+    schema = Schema(dump_config)
     roots = []
     for root_config in root_configs:
         try:
             table = schema.get_table(root_config.table)
         except KeyError:
             raise Exception(f"Root table {root_config.table} does not exist")
-        roots.append(_Root(table=table, condition=sql.SQL(root_config.condition)))
+        roots.append(Root(table=table, condition=sql.SQL(root_config.condition)))
 
     with io.output() as file, io.conn() as conn, contextlib.ExitStack() as stack:
         if params.output_type == OutputType.SLICE:
@@ -83,6 +80,7 @@ def dump(
         elif params.output_type == OutputType.SQL:
             sql_writer = SqlWriter(conn, file)
             if params.include_schema:
+                # must add schema before others
                 with sql_writer.open_predata() as f:
                     _pg_dump_section("pre-data", f)
             output = _SqlOutput(sql_writer)
@@ -106,7 +104,14 @@ def dump(
                         freeze_transaction(cur, snapshot=snapshot)
                         yield cur
 
-            _dump_rows(roots, params.parallelism, pg_manager, result, output)
+            _dump_rows(
+                roots,
+                params.include_schema and params.output_type != OutputType.SQL,
+                params.parallelism,
+                pg_manager,
+                result,
+                output,
+            )
 
         if params.output_type == OutputType.SLICE:
             manifest = Manifest(tables=result.table_manifests())
@@ -118,7 +123,8 @@ def dump(
 
 
 def _dump_rows(
-    roots: typing.List[_Root],
+    roots: typing.List[Root],
+    include_schema: bool,
     parallelism: int,
     cur_resource: ResourceFactory,
     result,
@@ -128,15 +134,26 @@ def _dump_rows(
     Dump rows
     """
 
-    logging.info("Dumping rows")
+    if include_schema:
+        logging.info("Dumping schema and rows")
+    else:
+        logging.info("Dumping rows")
     start = time.perf_counter()
     worker = _Dump(result, output)
     runner = WorkerRunner(parallelism, worker.process_item, cur_resource)
-    runner.run(
-        [_Dump.RootItem(table=root.table, condition=root.condition) for root in roots]
-    )
+    items = []
+    if include_schema:
+        items.append(_Dump.SchemaItem(section="pre-data"))
+        items.append(_Dump.SchemaItem(section="post-data"))
+    items += [
+        _Dump.RootItem(table=root.table, condition=root.condition) for root in roots
+    ]
+    runner.run(items)
     end = time.perf_counter()
-    logging.info("Dumped %d total rows (%.3fs)", result.row_count, end - start)
+    if include_schema:
+        logging.info("Dumped schema and %d total rows (%.3fs)", result.row_count, end - start)
+    else:
+        logging.info("Dumped %d total rows (%.3fs)", result.row_count, end - start)
 
 
 class _SliceOutput:
@@ -149,7 +166,15 @@ class _SliceOutput:
         self._writer = writer
 
     @contextlib.contextmanager
-    def open_segment(self, segment: _TableSegment):
+    def open_schema(self, section: str):
+        """
+        Open schema for writing
+        """
+        with self._lock, self._writer.open_schema(section) as f:
+            yield f
+
+    @contextlib.contextmanager
+    def open_segment(self, segment: TableSegment):
         """
         Open segment for writing
         """
@@ -168,8 +193,11 @@ class _SqlOutput:
         self._lock = threading.Lock()
         self._writer = writer
 
+    def open_schema(self, section: str):
+        raise Exception("Not supported")
+
     @contextlib.contextmanager
-    def open_segment(self, segment: _TableSegment):
+    def open_segment(self, segment: TableSegment):
         with self._lock, self._writer.open_data(
             segment.table.id,
             segment.index,
@@ -207,8 +235,8 @@ class _DiscoveryResult:
         self._lock = threading.Lock()
 
     def add(
-        self, table: _Table, row_ids: typing.List[Tid]
-    ) -> typing.Optional[_TableSegment]:
+        self, table: Table, row_ids: typing.List[Tid]
+    ) -> typing.Optional[TableSegment]:
         """
         Add IDs and return list of newly added segment
         """
@@ -234,7 +262,7 @@ class _DiscoveryResult:
                 )
             table_manifest = self._table_manifests[table.id]
 
-            segment = _TableSegment(
+            segment = TableSegment(
                 table=table, row_ids=new_ids, index=len(table_manifest.segments)
             )
             table_manifest.segments.append(ManifestTableSegment(row_count=len(new_ids)))
@@ -258,7 +286,7 @@ class _DiscoveryResult:
 class _Dump:
     @dataclasses.dataclass
     class RootItem:
-        table: _Table
+        table: Table
         """Table"""
         condition: sql.SQL
         """Condition"""
@@ -267,10 +295,15 @@ class _Dump:
     class ReferenceItem:
         direction: DumpReferenceDirection
         """Direction"""
-        reference: _Reference
+        reference: Reference
         """Reference"""
-        segment: _TableSegment
+        segment: TableSegment
         """Source segment"""
+
+    @dataclasses.dataclass
+    class SchemaItem:
+        section: str
+        """Section"""
 
     def __init__(self, result: _DiscoveryResult, output: _SliceOutput):
         self._result = result
@@ -304,6 +337,13 @@ class _Dump:
                 to_table = item.reference.table
 
             yield from self._table_items(segment, reference_item=item)
+        elif isinstance(item, _Dump.SchemaItem):
+            with tempfile.TemporaryFile() as tmp:
+                _pg_dump_section(item.section, tmp)
+                tmp.seek(0)
+                with self._output.open_schema(item.section) as f:
+                    shutil.copyfileobj(tmp, f)
+                return
 
         with tempfile.TemporaryFile() as tmp:
             _dump_data(cur, to_table, segment.row_ids, tmp)
@@ -313,7 +353,7 @@ class _Dump:
 
     def _table_items(
         self,
-        segment: _TableSegment,
+        segment: TableSegment,
         reference_item: _Dump.ReferenceItem = None,
     ):
         """
@@ -350,17 +390,17 @@ class _Dump:
 
 
 @dataclasses.dataclass
-class _Root:
+class Root:
     """Root"""
 
-    table: _Table
+    table: Table
     """Table"""
     condition: sql.SQL
     """Condition"""
 
 
 @dataclasses.dataclass
-class _Table:
+class Table:
     """Table"""
 
     id: str
@@ -371,37 +411,37 @@ class _Table:
     """Schema"""
     columns: typing.List[str]
     """Columns"""
-    references: typing.List[_Reference]
+    references: typing.List[Reference]
     """References to parent tables"""
-    reverse_references: typing.List[_Reference]
+    reverse_references: typing.List[Reference]
     """References to child tables"""
 
 
 @dataclasses.dataclass
-class _Reference:
+class Reference:
     """Reference"""
 
     directions: typing.List[DumpReferenceDirection]
     """Directions"""
     id: str
     """ID"""
-    table: _Table
+    table: Table
     """Table"""
     columns: typing.List[str]
     """Columns"""
-    reference_table: _Table
+    reference_table: Table
     """Reference columns"""
     reference_columns: typing.List[str]
 
 
 @dataclasses.dataclass
-class _TableSegment:
+class TableSegment:
     index: int
     row_ids: typing.List[Tid]
-    table: _Table
+    table: Table
 
 
-class _Schema:
+class Schema:
     """
     Graph model of schema
     """
@@ -409,7 +449,7 @@ class _Schema:
     def __init__(self, schema: DumpSchema):
         self._tables = {}
         for table_config in schema.tables:
-            table = _Table(
+            table = Table(
                 columns=table_config.columns,
                 references=[],
                 id=table_config.id,
@@ -436,7 +476,7 @@ class _Schema:
                     f"No table {reference_config.reference_table}, needed by reference {reference_config.id}"
                 )
 
-            reference = _Reference(
+            reference = Reference(
                 directions=reference_config.directions,
                 id=reference_config.id,
                 table=table,
@@ -450,7 +490,7 @@ class _Schema:
             table.references.append(reference)
             reference_table.reverse_references.append(reference)
 
-    def get_table(self, id) -> _Table:
+    def get_table(self, id) -> Table:
         """
         Get table by ID
         """
@@ -463,7 +503,7 @@ class _Schema:
         return self._tables.values()
 
 
-def _dump_data(cur, table: _Table, ids: typing.List[Tid], out):
+def _dump_data(cur, table: Table, ids: typing.List[Tid], out):
     """
     Dump data
     """
@@ -492,7 +532,7 @@ def _dump_data(cur, table: _Table, ids: typing.List[Tid], out):
 
 
 def _discover_table_condition(
-    cur, table: _Table, condition: sql.SQL, result: _DiscoveryResult
+    cur, table: Table, condition: sql.SQL, result: _DiscoveryResult
 ) -> typing.List[Tid]:
     """
     Discover, using root
@@ -535,9 +575,9 @@ def _discover_table_condition(
 
 def _discover_reference(
     cur,
-    reference: _Reference,
+    reference: Reference,
     direction: DumpReferenceDirection,
-    segment: _TableSegment,
+    segment: TableSegment,
     result,
 ) -> typing.List[Tid]:
     """

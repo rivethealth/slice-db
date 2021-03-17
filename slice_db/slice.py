@@ -41,6 +41,9 @@ class SliceReader:
         file = self._zip.open(_MANIFEST_PATH)
         return _UTF8_READER(file)
 
+    def open_schema(self, section: str):
+        return self._zip.open(f"{section}.sql")
+
     def open_segment(
         self, table_id: str, index: int
     ) -> typing.ContextManager[typing.BinaryIO]:
@@ -71,6 +74,9 @@ class SliceWriter:
         """
         file = self._zip.open(_MANIFEST_PATH, "w")
         return _UTF8_WRITER(file)
+
+    def open_schema(self, section: str):
+        return self._zip.open(f"{section}.sql", "w")
 
     def open_segment(
         self, table_id: str, index: int

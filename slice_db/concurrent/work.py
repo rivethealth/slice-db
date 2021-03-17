@@ -44,7 +44,7 @@ class WorkerRunner:
         queue_ = queue.LifoQueue()
         status = WorkStatus()
 
-        for item in items:
+        for item in reversed(items):
             queue_.put(WorkItem(item))
 
         threads = []

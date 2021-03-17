@@ -26,12 +26,13 @@ from .slice import SliceReader
 
 @dataclasses.dataclass
 class RestoreParams:
+    include_schema: bool
     parallelism: int
     transaction: bool
 
 
 def restore(conn_fn, params, file_fn):
-    if params.parallelism > 1 and params.transaction:
+    if not params.include_schema and params.parallelism > 1 and params.transaction:
         raise Exception("A single transaction must be disabled for parallelism > 1")
 
     with file_fn() as file, SliceReader(file) as reader:
@@ -56,7 +57,11 @@ def restore(conn_fn, params, file_fn):
 
             runner = GraphRunner(params.parallelism, restore.process, cur_factory)
 
-            constraints = get_constaints(cur, list(manifest_tables.values()))
+            if params.include_schema:
+                constraints = []
+            else:
+                constraints = get_constaints(cur, list(manifest_tables.values()))
+
             deferrable_constaints = [
                 [constraint.schema, constraint.name]
                 for constraint in constraints
@@ -72,6 +77,12 @@ def restore(conn_fn, params, file_fn):
                 lambda constraint: constraint.table,
             )
 
+            if params.include_schema:
+                with cur_factory() as conn, conn as cur:
+                    with reader.open_schema("pre-data") as f:
+                        schema_sql = f.read()
+                    cur.execute(schema_sql)
+
             runner.run(
                 list(items.values()),
                 lambda item: [
@@ -79,6 +90,12 @@ def restore(conn_fn, params, file_fn):
                     for foreign_key in deps[item.table.id]
                 ],
             )
+
+            if params.include_schema:
+                with cur_factory() as conn, conn as cur:
+                    with reader.open_schema("post-data") as f:
+                        schema_sql = f.read()
+                    cur.execute(schema_sql)
 
 
 @dataclasses.dataclass
@@ -114,7 +131,7 @@ def update_data(
     cur.copy_from(
         in_,
         sql.Identifier(table.schema, table.name).as_string(cur),
-        columns=table.columns,
+        columns=[sql.Identifier(column).as_string(cur) for column in table.columns],
         size=_BUFFER_SIZE,
     )
     end = time.perf_counter()

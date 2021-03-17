@@ -153,6 +153,14 @@ def add_restore_command(subparsers):
         type=int,
     )
     parser.add_argument(
+        "--include-schema",
+        "--no-include-schema",
+        default=False,
+        help="Include schema (default: %(default)s).",
+        action=NegateAction,
+        nargs=0,
+    )
+    parser.add_argument(
         "-i",
         "--input",
         default="-",

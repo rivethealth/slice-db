@@ -6,6 +6,6 @@ from .common import open_bytes_read
 
 
 def restore_main(args):
-    params = RestoreParams(parallelism=args.jobs, transaction=args.transaction)
+    params = RestoreParams(include_schema=args.include_schema, parallelism=args.jobs, transaction=args.transaction)
 
     restore(lambda: connection(""), params, lambda: open_bytes_read(args.input))
