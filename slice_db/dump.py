@@ -50,6 +50,7 @@ class DumpIo:
 
 @dataclasses.dataclass
 class DumpParams:
+    include_schema: bool
     parallelism: int
     output_type: OutputType
 
@@ -62,6 +63,9 @@ def dump(
     """
     Dump
     """
+    if params.output_type == OutputType.SLICE and params.include_schema:
+        raise Exception("--output-type=slice is incompatable with --include-schema")
+
     dump_config = DUMP_DATA_JSON_FORMAT.load(io.schema_file)
     schema = Schema(dump_config)
     roots = []
@@ -78,8 +82,9 @@ def dump(
             output = _SliceOutput(slice_writer)
         elif params.output_type == OutputType.SQL:
             sql_writer = SqlWriter(file)
-            with sql_writer.open_predata() as f:
-                _pg_dump_section("pre-data", f)
+            if params.include_schema:
+                with sql_writer.open_predata() as f:
+                    _pg_dump_section("pre-data", f)
             output = _SqlOutput(sql_writer)
 
         result = _DiscoveryResult()
@@ -107,8 +112,9 @@ def dump(
             manifest = Manifest(tables=result.table_manifests())
             MANIFEST_DATA_JSON_FORMAT.dump(slice_writer.open_manifest, manifest)
         elif params.output_type == OutputType.SQL:
-            with sql_writer.open_postdata() as f:
-                _pg_dump_section("post-data", f)
+            if params.include_schema:
+                with sql_writer.open_postdata() as f:
+                    _pg_dump_section("post-data", f)
 
 
 def _pg_dump_section(section: str, out: typing.BinaryIO) -> str:

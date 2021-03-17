@@ -19,6 +19,6 @@ def dump_main(args):
         output=lambda: open_bytes_write(args.output),
         schema_file=lambda: open_str_read(args.schema),
     )
-    params = DumpParams(parallelism=args.jobs, output_type=output_type)
+    params = DumpParams(include_schema=args.include_schema, parallelism=args.jobs, output_type=output_type)
 
     dump(roots, io, params)

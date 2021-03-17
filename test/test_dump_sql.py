@@ -65,6 +65,7 @@ def test_dump_sql(pg_database, snapshot):
             [
                 "slicedb",
                 "dump",
+                "--include-schema",
                 "--schema",
                 schema_file,
                 "--root",
