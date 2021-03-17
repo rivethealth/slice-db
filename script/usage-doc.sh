@@ -22,3 +22,5 @@ usage schema slicedb schema --help
 usage schema-filter slicedb schema-filter --help
 usage transform slicedb transform --help
 usage transform-field slicedb transform-field --help
+
+"$base/../node_modules/.bin/prettier" --write "$base/../doc/usage.md"
