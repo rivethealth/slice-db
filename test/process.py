@@ -2,7 +2,7 @@ import subprocess
 import typing
 
 
-def run_process(args: typing.List[str], env=None):
+def run_process(args: typing.List[str], env=None) -> bytes:
     run = subprocess.run(
         args,
         stdout=subprocess.PIPE,
