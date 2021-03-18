@@ -78,16 +78,15 @@ def dump(
         roots.append(Root(table=table, condition=sql.SQL(root_config.condition)))
 
     if io.transform_file is None:
-        transform = None
+        transformers = {}
     else:
         transform = TRANSFORM_DATA_JSON_FORMAT.load(io.transform_file)
-
-    transformers = {
-        transform_table.id: TableTransformer(
-            transform_table.columns, schema.get_table(transform_table.id).columns
-        )
-        for transform_table in transform.tables
-    }
+        transformers = {
+            transform_table.id: TableTransformer(
+                transform_table.columns, schema.get_table(transform_table.id).columns
+            )
+            for transform_table in transform.tables
+        }
 
     with io.output() as file, io.conn() as conn, contextlib.ExitStack() as stack:
         if params.output_type == OutputType.SLICE:

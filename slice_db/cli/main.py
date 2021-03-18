@@ -1,8 +1,11 @@
 import argparse
 import logging
+import warnings
 
 from ..log import TRACE
 from ..version import __version__
+
+warnings.filterwarnings("ignore")
 
 
 class LogLevel:

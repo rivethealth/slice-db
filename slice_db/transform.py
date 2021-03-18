@@ -1,7 +1,10 @@
 import codecs
+import datetime
 import hashlib
 import importlib.resources as pkg_resources
+import random
 import typing
+import unicodedata
 
 from .collection.dict import groups
 from .formats.transform import TransformColumn, TransformTable
@@ -10,14 +13,46 @@ from .pg.copy import COPY_FORMAT
 T = typing.TypeVar("T")
 
 
+def bytes_hash_int(input: bytes) -> int:
+    b = hashlib.md5(input).digest()
+    return int.from_bytes(b[0:8], "big")
+
+
 class Choice:
     def __init__(self, options: typing.List[T]):
         self._options = options
 
     def choose(self, input: bytes):
-        b = hashlib.md5(input).digest()
-        i = int.from_bytes(b[0:8], "big") % len(self._options)
+        i = bytes_hash_int(input) % len(self._options)
         return self._options[i]
+
+
+class IntRange:
+    def __init__(self, min, max):
+        self._min = min
+        self._max = max
+
+    def value(self, input: bytes):
+        x = bytes_hash_int(input) % (self._max - self._min)
+        return self._min + x
+
+
+class AlphanumericTransform:
+    def transform(self, text: str, pepper: bytes):
+        rnd = random.Random(bytes_hash_int(text.encode("utf-8") + pepper))
+        result = "".join(self._replace(rnd, c) for c in text)
+        return result
+
+    @staticmethod
+    def _replace(rnd, c):
+        category = unicodedata.category(c)
+        if category in ("Lu", "Lt", "Co", "Cs", "So"):
+            return chr(rnd.randint(ord("A"), ord("Z")))
+        if category in ("Ll", "Lm", "Lo"):
+            return chr(rnd.randint(ord("a"), ord("z")))
+        if category in ("Nd", "Nl", "No"):
+            return chr(rnd.randint(ord("0"), ord("9")))
+        return c
 
 
 class GivenNameTransform:
@@ -29,6 +64,16 @@ class GivenNameTransform:
 
     def transform(self, text: str, pepper: bytes):
         return self._choice.choose(text.encode("utf-8") + pepper)
+
+
+class DateYearTransform:
+    def transform(self, text: str, pepper: bytes):
+        date = datetime.date.fromisoformat(text)
+        year = datetime.date(date.year + 1, 1, 1) - datetime.date(date.year, 1, 1)
+        range = IntRange(0, year.days)
+        days = range.value(text.encode("utf-8") + pepper)
+        date = datetime.date(date.year, 1, 1) + datetime.timedelta(days=days)
+        return date.isoformat()
 
 
 class SurnameTransform:
@@ -61,6 +106,10 @@ class GeozipTransform:
 
 
 def create_transform(type):
+    if type == "alphanumeric":
+        return AlphanumericTransform()
+    if type == "date_year":
+        return DateYearTransform()
     if type == "geozip":
         return GeozipTransform()
     if type == "given_name":
