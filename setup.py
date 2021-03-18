@@ -28,9 +28,12 @@ setuptools.setup(
     extras_require={"dev": ["black", "pytest-env", "isort", "pytest", "snapshottest"]},
     long_description=long_description,
     long_description_content_type="text/markdown",
-    install_requires=["dataclasses_json==0.3.7", "numpy"],
+    install_requires=["dataclasses_json==0.3.7", "jsonschema", "numpy"],
     name="slice-db",
     packages=setuptools.find_packages(),
+    package_data={
+        "slice_db.formats": ["*.json"],
+    },
     project_urls={
         "Issues": "https://github.com/rivethealth/slice-db/issues",
     },

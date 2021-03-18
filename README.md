@@ -7,6 +7,20 @@
 SliceDB is a tool for capturing and restoring a subset of a PostgreSQL database.
 It also supports scrubbing sensive data.
 
+## Install
+
+### Pip
+
+```sh
+pip3 install psycopg2-binary slice_db
+```
+
+### Docker
+
+```sh
+docker pull rivethealth/slicedb
+```
+
 ## Usage
 
 For all commands and options, see [Usage](doc/usage.md).
