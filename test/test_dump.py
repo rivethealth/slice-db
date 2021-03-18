@@ -43,6 +43,7 @@ _SCHEMA_JSON = {
     ],
 }
 
+
 def test_dump(pg_database, snapshot):
     with temp_file("schema-") as schema_file, temp_file("output-") as output_file:
         with connection("") as conn, transaction(conn) as cur:
@@ -101,6 +102,7 @@ def test_dump(pg_database, snapshot):
             cur.execute("TABLE child")
             result = cur.fetchall()
             assert result == [(1, 1), (2, 1)]
+
 
 def test_dump_schema(pg_database, snapshot):
     with temp_file("schema-") as schema_file, temp_file("output-") as output_file:

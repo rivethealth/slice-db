@@ -29,11 +29,13 @@ from .formats.manifest import (
     ManifestTable,
     ManifestTableSegment,
 )
+from .formats.transform import TRANSFORM_DATA_JSON_FORMAT
 from .log import TRACE
 from .pg import Tid, export_snapshot, freeze_transaction, tid_to_int, transaction
 from .resource import ResourceFactory
 from .slice import SliceWriter
 from .sql import SqlWriter
+from .transform import TableTransformer
 
 
 class OutputType(enum.Enum):
@@ -46,12 +48,14 @@ class DumpIo:
     conn: ResourceFactory
     schema_file: ResourceFactory[typing.TextIO]
     output: ResourceFactory[typing.BinaryIO]
+    transform_file: typing.Optional[ResourceFactory[typing.TextIO]]
 
 
 @dataclasses.dataclass
 class DumpParams:
     include_schema: bool
     parallelism: int
+    pepper: bytes
     output_type: OutputType
 
 
@@ -72,6 +76,18 @@ def dump(
         except KeyError:
             raise Exception(f"Root table {root_config.table} does not exist")
         roots.append(Root(table=table, condition=sql.SQL(root_config.condition)))
+
+    if io.transform_file is None:
+        transform = None
+    else:
+        transform = TRANSFORM_DATA_JSON_FORMAT.load(io.transform_file)
+
+    transformers = {
+        transform_table.id: TableTransformer(
+            transform_table.columns, schema.get_table(transform_table.id).columns
+        )
+        for transform_table in transform.tables
+    }
 
     with io.output() as file, io.conn() as conn, contextlib.ExitStack() as stack:
         if params.output_type == OutputType.SLICE:
@@ -106,8 +122,10 @@ def dump(
 
             _dump_rows(
                 roots,
+                transformers,
                 params.include_schema and params.output_type != OutputType.SQL,
                 params.parallelism,
+                params.pepper,
                 pg_manager,
                 result,
                 output,
@@ -124,8 +142,10 @@ def dump(
 
 def _dump_rows(
     roots: typing.List[Root],
+    transformers: typing.Dict[str, TableTransformer],
     include_schema: bool,
     parallelism: int,
+    pepper: bytes,
     cur_resource: ResourceFactory,
     result,
     output: typing.Union[_SliceOutput, _SqlOutput],
@@ -139,7 +159,7 @@ def _dump_rows(
     else:
         logging.info("Dumping rows")
     start = time.perf_counter()
-    worker = _Dump(result, output)
+    worker = _Dump(transformers, pepper, result, output)
     runner = WorkerRunner(parallelism, worker.process_item, cur_resource)
     items = []
     if include_schema:
@@ -151,7 +171,9 @@ def _dump_rows(
     runner.run(items)
     end = time.perf_counter()
     if include_schema:
-        logging.info("Dumped schema and %d total rows (%.3fs)", result.row_count, end - start)
+        logging.info(
+            "Dumped schema and %d total rows (%.3fs)", result.row_count, end - start
+        )
     else:
         logging.info("Dumped %d total rows (%.3fs)", result.row_count, end - start)
 
@@ -305,9 +327,17 @@ class _Dump:
         section: str
         """Section"""
 
-    def __init__(self, result: _DiscoveryResult, output: _SliceOutput):
+    def __init__(
+        self,
+        transformers: typing.Dict[str, TableTransformer],
+        pepper: bytes,
+        result: _DiscoveryResult,
+        output: _SliceOutput,
+    ):
         self._result = result
         self._output = output
+        self._pepper = pepper
+        self._transformers = transformers
 
     def process_item(
         self, item: typing.Union[_Dump.RootItem, _Dump.ReferenceItem], cur
@@ -349,7 +379,12 @@ class _Dump:
             _dump_data(cur, to_table, segment.row_ids, tmp)
             tmp.seek(0)
             with self._output.open_segment(segment) as f:
-                shutil.copyfileobj(tmp, f)
+                try:
+                    transformer = self._transformers[to_table.id]
+                except KeyError:
+                    shutil.copyfileobj(tmp, f)
+                else:
+                    TableTransformer.transform_binary(transformer, self._pepper, tmp, f)
 
     def _table_items(
         self,
