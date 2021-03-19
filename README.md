@@ -63,11 +63,14 @@ PGHOST=myhost slicedb schema > slice.yml
 
 SliceDB can produce multiple formats:
 
-- **slice** - ZIP archive of table data. This can be restored into an existing
-  database with `slicedb restore`.
+- **slice** - ZIP archive. This can be restored into an existing database with
+  `slicedb restore`.
 - **sql** - SQL file. This can be restored into an existing database with `psql`
-  or another client, if triggers are disabled. It may include the schema, in
-  which case it is restored into a new database.
+  or another client. If restoring into existing schema, foreign keys must first
+  be disabled, e.g. `SET session_replication_role = replica`.
+
+Both formats can optionally include schema. Restoring with schema requires an
+empty database.
 
 ### Schema
 

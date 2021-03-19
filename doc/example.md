@@ -42,30 +42,19 @@ VALUES (1, 1), (2, 1), (3, 2);
 
 ```sh
 PGHOST=localhost PGDATABASE=source slicedb schema > schema.json
-PGHOST=localhost PGDATABASE=source slicedb dump --root public.parent 'id = 1' --schema schema.json > slice.zip
+PGHOST=localhost PGDATABASE=source slicedb dump --include-schema --root public.parent 'id = 1' --schema schema.json > slice.zip
 ```
 
 ## Create target database
 
 ```sh
 PGHOST=localhost createdb target
-
-PGHOST=localhost PGDATABASE=target psql -c '
-CREATE TABLE parent (
-    id int PRIMARY KEY
-);
-
-CREATE TABLE child (
-    id int PRIMARY KEY,
-    parent_id int REFERENCES parent (id)
-);
-'
 ```
 
 ## Restore a slice
 
 ```sh
-PGHOST=localhost PGDATABASE=target slicedb restore < slice.zip
+PGHOST=localhost PGDATABASE=target slicedb restore --include-schema < slice.zip
 ```
 
 ## Inspect the result
