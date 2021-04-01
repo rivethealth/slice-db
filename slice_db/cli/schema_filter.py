@@ -1,21 +1,19 @@
 import json
 
 from ..dump import Schema, Table
-from ..formats.dump import DumpReferenceDirection, DumpSchema
+from ..formats.dump import DUMP_DATA_JSON_FORMAT, DumpReferenceDirection, DumpSchema
 from .common import open_str_read, open_str_write
 
 
 def filter_main(args):
-    with open_str_read(args.input) as f:
-        schema_json = json.load(f)
-    input_config = DumpSchema.schema().load(schema_json)
+    input_config = DUMP_DATA_JSON_FORMAT.load(lambda: open_str_read(args.input))
 
     if args.subcommand == "children":
         output_config = children(args, input_config)
 
-    output_json = DumpSchema.schema().dump(output_config)
-    with open_str_write(args.output) as f:
-        json.dump(output_json, f, sort_keys=True, indent=2)
+    DUMP_DATA_JSON_FORMAT.dump(
+        lambda: open_str_write(args.output), output_config, pretty=True
+    )
 
 
 def children(args, input_config: DumpSchema):

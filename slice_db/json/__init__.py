@@ -56,9 +56,9 @@ class DataJsonFormat(typing.Generic[T]):
         instance = self._format.load(file_fn)
         return self._dataclass_schema.load(instance)
 
-    def dump(self, file_fn: ResourceFactory[typing.TextIO], instance: T):
+    def dump(self, file_fn: ResourceFactory[typing.TextIO], instance: T, pretty=False):
         instance = self._dataclass_schema.dump(instance)
-        self._format.dump(file_fn, instance)
+        self._format.dump(file_fn, instance, pretty=pretty)
 
 
 def package_json_format(package: str, name: str):

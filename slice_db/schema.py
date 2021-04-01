@@ -21,13 +21,13 @@ def query_schema(cur):
                                     'schema', pn.nspname
                                 )
                             ),
-                            json '[]'
+                            '[]'
                         ) AS tables
                     FROM
                         pg_class AS pc
                         JOIN pg_namespace AS pn ON pc.relnamespace = pn.oid
                         CROSS JOIN LATERAL (
-                            SELECT json_agg(pa.attname ORDER BY pa.attnum) AS columns
+                            SELECT coalesce(json_agg(pa.attname ORDER BY pa.attnum), '[]') AS columns
                             FROM pg_attribute AS pa
                             WHERE pc.oid = pa.attrelid AND 0 < pa.attnum AND NOT pa.attisdropped
                         ) AS pa
@@ -48,7 +48,7 @@ def query_schema(cur):
                                     'table', pn.nspname || '.' || pc2.relname
                                 )
                             ),
-                            json '[]'
+                            '[]'
                         ) AS references
                     FROM
                         pg_constraint AS pc
