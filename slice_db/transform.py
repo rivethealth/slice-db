@@ -176,7 +176,7 @@ class TableTransformer:
     ):
         self._fields = [
             TableTransformer._Field(
-                columns.index(name), create_transform(column.transform, column.transformParams)
+                columns.index(name), create_transform(column.transform, column.params)
             )
             for name, column in transform_columns.items()
         ]

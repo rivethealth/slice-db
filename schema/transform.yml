@@ -7,14 +7,14 @@ definitions:
     description: Column
     title: Column
     properties:
+      params:
+        default:
+        description: Parameters for transform
+        title: Transform parameters
       transform:
         description: Type of transform
         title: Transform
         type: string
-      transformParams:
-        default:
-        description: Parameters for transform
-        title: Transform parameters
     required: [transform]
     type: object
   table:

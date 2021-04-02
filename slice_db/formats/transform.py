@@ -10,7 +10,7 @@ from ..json import DataJsonFormat, package_json_format
 @dataclasses.dataclass
 class TransformColumn:
     transform: str
-    transformParams: typing.Any = None
+    params: typing.Any = None
 
 
 @dataclasses_json.dataclass_json(letter_case=dataclasses_json.LetterCase.CAMEL)

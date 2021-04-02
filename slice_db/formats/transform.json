@@ -7,18 +7,20 @@
       "description": "Column",
       "title": "Column",
       "properties": {
+        "params": {
+          "default": null,
+          "description": "Parameters for transform",
+          "title": "Transform parameters"
+        },
         "transform": {
           "description": "Type of transform",
           "title": "Transform",
           "type": "string"
-        },
-        "transformParams": {
-          "default": null,
-          "description": "Parameters for transform",
-          "title": "Transform parameters"
         }
       },
-      "required": ["transform"],
+      "required": [
+        "transform"
+      ],
       "type": "object"
     },
     "table": {
