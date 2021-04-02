@@ -59,22 +59,23 @@ PGHOST=myhost slicedb schema > slice.yml
 
 ## Dump
 
-### Output types
+### Output formats
 
 SliceDB can produce multiple formats:
 
-- **slice** - ZIP archive. This can be restored into an existing database with
-  `slicedb restore`.
-- **sql** - SQL file. This can be restored into an existing database with `psql`
-  or another client. If restoring into existing schema, foreign keys must first
-  be disabled, e.g. `SET session_replication_role = replica`.
+- **slice** - ZIP archive. This can be restored with `slicedb restore`.
+- **sql** - SQL file. This can be restored with `psql` or another client. If
+  restoring into existing schema, foreign keys must first be disabled, e.g.
+  `SET session_replication_role = replica`.
 
-Both formats can optionally include schema. Restoring with schema requires an
+### Output content
+
+Schema can optionally be included. Restoring with schema requires an existing
 empty database.
 
 ### Schema
 
-See formats/schema.yml for the JSONSchema of the schema file.
+See [formats/schema.yml](formats/schema.yml) for the JSONSchema.
 
 The `schema` command uses foreign keys to infer relationships between tables. It
 is a suggested starting point.
@@ -106,10 +107,10 @@ dozen MBs of memory.
 
 ## Transformation
 
-_TODO_
+See [formats/transform.yml](formats/transform.yml) for the JSONSchema.
 
 Replacements are deterministic for a given pepper. By default, the pepper is
-randomly geneated for a slice. You may specify it as `--pepper`. Note that
+randomly generated each run. You may specify it as `--pepper`. Note that
 possession of the pepper makes the data guessable.
 
 Transformation may operate an existing slice, or happen during the dump.

@@ -27,7 +27,7 @@ _SCHEMA_JSON = {
 def test_schema_empty(pg_database, snapshot):
     with connection("") as conn, transaction(conn) as cur:
         cur.execute(_SCHEMA_SQL)
-    
+
     output = run_process(["slicedb", "schema"])
 
     schema = json.loads(output)
