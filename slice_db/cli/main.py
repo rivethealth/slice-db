@@ -233,6 +233,7 @@ def add_transform_field_command(subparsers):
     update_help(parser)
     parser.add_argument("--pepper", help="Pepper.")
     parser.add_argument("--transform", required=True)
+    parser.add_argument("--params", default="null")
     parser.add_argument("field")
 
 

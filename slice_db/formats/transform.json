@@ -18,9 +18,7 @@
           "title": "Transform parameters"
         }
       },
-      "required": [
-        "transform"
-      ],
+      "required": ["transform"],
       "type": "object"
     },
     "table": {

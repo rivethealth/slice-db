@@ -38,7 +38,10 @@ class IntRange:
 
 
 class AlphanumericTransform:
-    def transform(self, text: str, pepper: bytes):
+    def transform(self, text: typing.Optional[str], pepper: bytes):
+        if text is None:
+            return None
+
         rnd = random.Random(bytes_hash_int(text.encode("utf-8") + pepper))
         result = "".join(self._replace(rnd, c) for c in text)
         return result
@@ -55,6 +58,17 @@ class AlphanumericTransform:
         return c
 
 
+class ConstTransform:
+    def __init__(self, value):
+        self._value = value
+
+    def transform(self, text: typing.Optional[str], pepper: bytes):
+        if text is None:
+            return None
+
+        return self._value
+
+
 class GivenNameTransform:
     def __init__(self):
         with pkg_resources.open_text("slice_db.data", "given-name.txt") as f:
@@ -62,18 +76,29 @@ class GivenNameTransform:
         options = [name for name in text.split("\n") if name]
         self._choice = Choice(options)
 
-    def transform(self, text: str, pepper: bytes):
+    def transform(self, text: typing.Optional[str], pepper: bytes):
+        if text is None:
+            return None
+
         return self._choice.choose(text.encode("utf-8") + pepper)
 
 
 class DateYearTransform:
-    def transform(self, text: str, pepper: bytes):
+    def transform(self, text: typing.Optional[str], pepper: bytes):
+        if text is None:
+            return None
+
         date = datetime.date.fromisoformat(text)
         year = datetime.date(date.year + 1, 1, 1) - datetime.date(date.year, 1, 1)
         range = IntRange(0, year.days)
         days = range.value(text.encode("utf-8") + pepper)
         date = datetime.date(date.year, 1, 1) + datetime.timedelta(days=days)
         return date.isoformat()
+
+
+class NullTransform:
+    def transform(self, text: typing.Optional[str], pepper: bytes):
+        return None
 
 
 class SurnameTransform:
@@ -83,7 +108,10 @@ class SurnameTransform:
         options = [name for name in text.split("\n") if name]
         self._choice = Choice(options)
 
-    def transform(self, text: str, pepper: bytes):
+    def transform(self, text: typing.Optional[str], pepper: bytes):
+        if text is None:
+            return None
+
         return self._choice.choose(text.encode("utf-8") + pepper)
 
 
@@ -96,7 +124,10 @@ class GeozipTransform:
         self._choices = {geozip: Choice(options) for geozip, options in g.items()}
         self._all_choices = Choice(options)
 
-    def transform(self, zip: str, pepper: bytes):
+    def transform(self, zip: typing.Optional[str], pepper: bytes):
+        if zip is None:
+            return None
+
         geo = zip[0:3]
         if geo not in self._choices:
             result = self._all_choices.choose(zip.encode("utf-8") + pepper)
@@ -105,15 +136,19 @@ class GeozipTransform:
         return str(result).zfill(5)
 
 
-def create_transform(type):
+def create_transform(type, params):
     if type == "alphanumeric":
         return AlphanumericTransform()
+    if type == "const":
+        return ConstTransform(params)
     if type == "date_year":
         return DateYearTransform()
     if type == "geozip":
         return GeozipTransform()
     if type == "given_name":
         return GivenNameTransform()
+    if type == "null":
+        return NullTransform()
     if type == "surname":
         return SurnameTransform()
     raise Exception(f"Invalid transform type {type}")
@@ -141,7 +176,7 @@ class TableTransformer:
     ):
         self._fields = [
             TableTransformer._Field(
-                columns.index(name), create_transform(column.transform)
+                columns.index(name), create_transform(column.transform, column.transformParams)
             )
             for name, column in transform_columns.items()
         ]

@@ -82,9 +82,7 @@ def dump(
     else:
         transform = TRANSFORM_DATA_JSON_FORMAT.load(io.transform_file)
         transformers = {
-            id: TableTransformer(
-                transform_table.columns, schema.get_table(id).columns
-            )
+            id: TableTransformer(transform_table.columns, schema.get_table(id).columns)
             for id, transform_table in transform.tables.items()
         }
 

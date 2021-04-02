@@ -42,9 +42,7 @@ _SCHEMA_JSON = {
 }
 
 _TRANSFORM_JSON = {
-    "tables": {
-        "public.child": {"columns": {"name":{"transform": "given_name"}}}
-    }
+    "tables": {"public.child": {"columns": {"name": {"transform": "given_name"}}}}
 }
 
 

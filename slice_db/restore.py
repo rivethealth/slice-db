@@ -38,7 +38,9 @@ def restore(conn_fn, params, file_fn):
     with file_fn() as file, SliceReader(file) as reader:
         manifest = MANIFEST_DATA_JSON_FORMAT.load(reader.open_manifest)
 
-        items = {id: RestoreItem(id=id, table=table) for id, table in manifest.tables.items()}
+        items = {
+            id: RestoreItem(id=id, table=table) for id, table in manifest.tables.items()
+        }
         restore = Restore(reader)
 
         with conn_fn() as conn, transaction(conn) as cur:
@@ -85,8 +87,7 @@ def restore(conn_fn, params, file_fn):
             runner.run(
                 list(items.values()),
                 lambda item: [
-                    items[foreign_key.reference_table]
-                    for foreign_key in deps[item.id]
+                    items[foreign_key.reference_table] for foreign_key in deps[item.id]
                 ],
             )
 

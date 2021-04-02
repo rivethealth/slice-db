@@ -119,9 +119,11 @@ Transformation may operate an existing slice, or happen during the dump.
 
 - `alphanumeric` - Replace alphanumeric characters, preserve the type and case
   of characters.
+- `const` - Constant value.
 - `date_year` - Change date by up to one year.
 - `geozip` - Replace zip code, preserving the first three digits.
 - `given_name` - Replace given name.
+- `null` - Null value.
 - `person_name` - Replace name.
 - `surname` - Replace surname.
 - `composite` - Parse as a PostgreSQL composite, with suboptions.

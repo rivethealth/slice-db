@@ -18,6 +18,22 @@ def test_transform_field_alphanumeric():
     assert result.decode("utf-8") == "262 Eimu Yg $7.96\n"
 
 
+def test_transform_field_const():
+    result = run_process(
+        [
+            "slicedb",
+            "transform-field",
+            "--pepper",
+            "abc",
+            "--transform",
+            "const",
+            "--params", '"X"',
+            "example"
+        ]
+    )
+    assert result.decode("utf-8") == "X\n"
+
+
 def test_transform_field_date_year():
     result = run_process(
         [
@@ -76,3 +92,18 @@ def test_transform_field_surname():
         ]
     )
     assert result.decode("utf-8") == "Bertrand\n"
+
+
+def test_transform_field_null():
+    result = run_process(
+        [
+            "slicedb",
+            "transform-field",
+            "--pepper",
+            "abc",
+            "--transform",
+            "const",
+            "example"
+        ]
+    )
+    assert result.decode("utf-8") == "\n"
