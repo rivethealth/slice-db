@@ -33,6 +33,7 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     package_data={
         "slice_db.formats": ["*.json"],
+        "slice_db.data": ["*.txt"],
     },
     project_urls={
         "Issues": "https://github.com/rivethealth/slice-db/issues",
