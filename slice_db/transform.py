@@ -135,13 +135,15 @@ class TableTransformer:
             row[self._index] = COPY_FORMAT.serialize_field(field)
 
     def __init__(
-        self, transform_columns: typing.List[TransformColumn], columns: typing.List[str]
+        self,
+        transform_columns: typing.Dict[str, TransformColumn],
+        columns: typing.List[str],
     ):
         self._fields = [
             TableTransformer._Field(
-                columns.index(column.name), create_transform(column.transform)
+                columns.index(name), create_transform(column.transform)
             )
-            for column in transform_columns
+            for name, column in transform_columns.items()
         ]
 
     def transform(self, pepper: bytes, input: typing.TextIO, output: typing.TextIO):

@@ -10,7 +10,7 @@ definitions:
   reference:
     description: Reference to another table, i.e. a foreign key.
     title: Reference
-    required: [table, columns, id, referenceColumns, referenceTable]
+    required: [table, columns, referenceColumns, referenceTable]
     properties:
       columns:
         description: Local columns
@@ -24,10 +24,6 @@ definitions:
         title: Directions
         type: array
         uniqueItems: true
-      id:
-        description: Unique ID of foreign key
-        title: ID
-        type: string
       referenceColumns:
         description: Foreign columns
         title: Foreign columns
@@ -43,11 +39,8 @@ definitions:
     type: string
   table:
     description: Table
-    required: [columns, id, name]
+    required: [columns, name]
     properties:
-      id:
-        description: ID
-        type: string
       name:
         description: Name
         type: string
@@ -61,14 +54,14 @@ definitions:
     type: object
 properties:
   references:
+    additionalProperties: { $ref: "#/definitions/reference" }
     description: References
     title: References
-    type: array
-    items: { $ref: "#/definitions/reference" }
+    type: object
   tables:
+    additionalProperties: { $ref: "#/definitions/table" }
     description: Tables
     title: Tables
-    items: { $ref: "#/definitions/table" }
-    type: array
+    type: object
 required: [references, tables]
 type: object

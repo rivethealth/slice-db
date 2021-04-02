@@ -37,9 +37,8 @@ def restore(conn_fn, params, file_fn):
 
     with file_fn() as file, SliceReader(file) as reader:
         manifest = MANIFEST_DATA_JSON_FORMAT.load(reader.open_manifest)
-        manifest_tables = {table.id: table for table in manifest.tables}
 
-        items = {id: RestoreItem(table=table) for id, table in manifest_tables.items()}
+        items = {id: RestoreItem(id=id, table=table) for id, table in manifest.tables.items()}
         restore = Restore(reader)
 
         with conn_fn() as conn, transaction(conn) as cur:
@@ -60,7 +59,7 @@ def restore(conn_fn, params, file_fn):
             if params.include_schema:
                 constraints = []
             else:
-                constraints = get_constaints(cur, list(manifest_tables.values()))
+                constraints = get_constaints(cur, manifest.tables)
 
             deferrable_constaints = [
                 [constraint.schema, constraint.name]
@@ -87,7 +86,7 @@ def restore(conn_fn, params, file_fn):
                 list(items.values()),
                 lambda item: [
                     items[foreign_key.reference_table]
-                    for foreign_key in deps[item.table.id]
+                    for foreign_key in deps[item.id]
                 ],
             )
 
@@ -100,6 +99,7 @@ def restore(conn_fn, params, file_fn):
 
 @dataclasses.dataclass
 class RestoreItem:
+    id: str
     table: ManifestTable
 
     def __hash__(self):
@@ -114,19 +114,19 @@ class Restore:
         with transaction as cur:
             for i, segment in enumerate(item.table.segments):
                 with self._slice_reader.open_segment(
-                    item.table.id,
+                    item.id,
                     i,
                 ) as file:
-                    update_data(cur, item.table, i, segment, file)
+                    update_data(cur, item.id, item.table, i, segment, file)
 
 
 _BUFFER_SIZE = 1024 * 32
 
 
 def update_data(
-    cur, table: ManifestTable, index: int, segment: ManifestTableSegment, in_
+    cur, id: str, table: ManifestTable, index: int, segment: ManifestTableSegment, in_
 ):
-    logging.log(TRACE, f"Restoring %s rows into table %s", segment.row_count, table.id)
+    logging.log(TRACE, f"Restoring %s rows into table %s", segment.row_count, id)
     start = time.perf_counter()
     cur.copy_from(
         in_,
@@ -138,7 +138,7 @@ def update_data(
     logging.debug(
         f"Restored %s rows in table %s (%.3fs)",
         segment.row_count,
-        table.id,
+        id,
         end - start,
     )
 
@@ -158,7 +158,7 @@ class ForeignKey:
 
 
 def get_constaints(
-    cur, manifest_tables: typing.List[ManifestTable]
+    cur, manifest_tables: typing.Dict[str, ManifestTable]
 ) -> typing.List[ForeignKey]:
     """
     Query PostgreSQL for constraints between tables
@@ -187,9 +187,9 @@ def get_constaints(
             WHERE pc.contype = 'f'
         """,
         [
-            [table.id for table in manifest_tables],
-            [table.schema for table in manifest_tables],
-            [table.name for table in manifest_tables],
+            list(manifest_tables.keys()),
+            [table.schema for table in manifest_tables.values()],
+            [table.name for table in manifest_tables.values()],
         ],
     )
 

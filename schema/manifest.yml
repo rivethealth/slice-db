@@ -13,10 +13,6 @@ definitions:
         items: { $ref: "#/definitions/column" }
         title: Column
         type: array
-      id:
-        description: ID of table
-        title: ID
-        type: string
       name:
         description: Name of table
         title: Name
@@ -30,7 +26,7 @@ definitions:
         segments: { $ref: "#/definitions/tableSegment" }
         title: Segments
         type: array
-    required: [id, name, schema, segments]
+    required: [name, schema, segments]
     title: Table
     type: object
   tableSegment:
@@ -47,10 +43,10 @@ definitions:
 description: Snapshot manifest
 properties:
   tables:
+    additionalProperties: { $ref: "#/definitions/table" }
     description: Tables
-    items: { $ref: "#/definitions/table" }
     title: Tables
-    type: array
+    type: object
 required: [tables]
 title: Manifest
 type: object

@@ -82,10 +82,10 @@ def dump(
     else:
         transform = TRANSFORM_DATA_JSON_FORMAT.load(io.transform_file)
         transformers = {
-            transform_table.id: TableTransformer(
-                transform_table.columns, schema.get_table(transform_table.id).columns
+            id: TableTransformer(
+                transform_table.columns, schema.get_table(id).columns
             )
-            for transform_table in transform.tables
+            for id, transform_table in transform.tables.items()
         }
 
     with io.output() as file, io.conn() as conn, contextlib.ExitStack() as stack:
@@ -276,7 +276,6 @@ class _DiscoveryResult:
             if table.id not in self._table_manifests:
                 self._table_manifests[table.id] = ManifestTable(
                     columns=table.columns,
-                    id=table.id,
                     name=table.name,
                     schema=table.schema,
                     segments=[],
@@ -299,9 +298,9 @@ class _DiscoveryResult:
 
     def table_manifests(self):
         """
-        Iterable of ManifestTables
+        Dict of ManifestTables
         """
-        return self._table_manifests.values()
+        return self._table_manifests
 
 
 class _Dump:
@@ -482,21 +481,19 @@ class Schema:
 
     def __init__(self, schema: DumpSchema):
         self._tables = {}
-        for table_config in schema.tables:
+        for id, table_config in schema.tables.items():
             table = Table(
                 columns=table_config.columns,
                 references=[],
-                id=table_config.id,
+                id=id,
                 name=table_config.name,
                 reverse_references=[],
                 schema=table_config.schema,
             )
-            if table.id in self._tables:
-                raise Exception(f"Multiple definitions for table {table.id}")
             self._tables[table.id] = table
 
         self._references = {}
-        for reference_config in schema.references:
+        for id, reference_config in schema.references.items():
             try:
                 table = self._tables[reference_config.table]
             except KeyError:
@@ -512,15 +509,13 @@ class Schema:
 
             reference = Reference(
                 directions=reference_config.directions,
-                id=reference_config.id,
+                id=id,
                 table=table,
                 columns=reference_config.columns,
                 reference_table=reference_table,
                 reference_columns=reference_config.reference_columns,
             )
-            if reference.id in self._references:
-                raise Exception(f"Multiple definitions for reference {reference.id}")
-            self._references[reference.id] = reference
+            self._references[id] = reference
             table.references.append(reference)
             reference_table.reverse_references.append(reference)
 

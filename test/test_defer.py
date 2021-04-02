@@ -14,23 +14,21 @@ CREATE TABLE directory (
 """
 
 _SCHEMA_JSON = {
-    "references": [
-        {
+    "references": {
+        "public.directory.directory_parent_id_fkey": {
             "columns": ["parent_id"],
-            "id": "public.directory.directory_parent_id_fkey",
             "referenceColumns": ["id"],
             "referenceTable": "public.directory",
             "table": "public.directory",
         }
-    ],
-    "tables": [
-        {
+    },
+    "tables": {
+        "public.directory": {
             "columns": ["id", "parent_id"],
-            "id": "public.directory",
             "name": "directory",
             "schema": "public",
         },
-    ],
+    },
 }
 
 

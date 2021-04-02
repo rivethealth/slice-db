@@ -11,13 +11,7 @@
     "reference": {
       "description": "Reference to another table, i.e. a foreign key.",
       "title": "Reference",
-      "required": [
-        "table",
-        "columns",
-        "id",
-        "referenceColumns",
-        "referenceTable"
-      ],
+      "required": ["table", "columns", "referenceColumns", "referenceTable"],
       "properties": {
         "columns": {
           "description": "Local columns",
@@ -36,11 +30,6 @@
           "title": "Directions",
           "type": "array",
           "uniqueItems": true
-        },
-        "id": {
-          "description": "Unique ID of foreign key",
-          "title": "ID",
-          "type": "string"
         },
         "referenceColumns": {
           "description": "Foreign columns",
@@ -64,12 +53,8 @@
     },
     "table": {
       "description": "Table",
-      "required": ["columns", "id", "name"],
+      "required": ["columns", "name"],
       "properties": {
-        "id": {
-          "description": "ID",
-          "type": "string"
-        },
         "name": {
           "description": "Name",
           "type": "string"
@@ -91,20 +76,20 @@
   },
   "properties": {
     "references": {
+      "additionalProperties": {
+        "$ref": "#/definitions/reference"
+      },
       "description": "References",
       "title": "References",
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/reference"
-      }
+      "type": "object"
     },
     "tables": {
-      "description": "Tables",
-      "title": "Tables",
-      "items": {
+      "additionalProperties": {
         "$ref": "#/definitions/table"
       },
-      "type": "array"
+      "description": "Tables",
+      "title": "Tables",
+      "type": "object"
     }
   },
   "required": ["references", "tables"],

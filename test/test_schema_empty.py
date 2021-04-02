@@ -12,15 +12,14 @@ _SCHEMA_SQL = """
 """
 
 _SCHEMA_JSON = {
-    "references": [],
-    "tables": [
-        {
+    "references": {},
+    "tables": {
+        "public.empty": {
             "columns": [],
-            "id": "public.empty",
             "name": "empty",
             "schema": "public",
         },
-    ],
+    },
 }
 
 

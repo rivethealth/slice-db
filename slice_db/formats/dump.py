@@ -19,7 +19,6 @@ class DumpReferenceDirection(enum.Enum):
 @dataclasses.dataclass
 class DumpReference:
     columns: typing.List[str]
-    id: str
     reference_columns: typing.List[str]
     reference_table: str
     table: str
@@ -37,7 +36,6 @@ class DumpReference:
 @dataclasses.dataclass
 class DumpTable:
     columns: typing.List[str]
-    id: str
     name: str
     schema: typing.Optional[str]
 
@@ -48,8 +46,8 @@ class DumpTable:
 )
 @dataclasses.dataclass
 class DumpSchema:
-    references: typing.List[DumpReference]
-    tables: typing.List[DumpTable]
+    references: typing.Dict[str, DumpReference]
+    tables: typing.Dict[str, DumpTable]
 
 
 @dataclasses.dataclass

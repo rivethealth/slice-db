@@ -7,11 +7,6 @@
       "description": "Column",
       "title": "Column",
       "properties": {
-        "name": {
-          "description": "Name of column",
-          "title": "Name",
-          "type": "string"
-        },
         "transform": {
           "description": "Type of transform",
           "title": "Transform",
@@ -23,24 +18,21 @@
           "title": "Transform parameters"
         }
       },
-      "required": ["transform", "name"],
+      "required": [
+        "transform"
+      ],
       "type": "object"
     },
     "table": {
       "description": "Table",
       "properties": {
-        "id": {
-          "description": "ID of table",
-          "title": "ID",
-          "type": "string"
-        },
         "columns": {
-          "description": "Columns. Omitted columns are left untouched.",
-          "items": {
+          "additionalProperties": {
             "$ref": "#/definitions/column"
           },
+          "description": "Columns. Omitted columns are left untouched.",
           "title": "Columns",
-          "type": "array"
+          "type": "object"
         }
       },
       "title": "Table",
@@ -49,12 +41,12 @@
   },
   "properties": {
     "tables": {
-      "description": "Tables. Omitted tables are left untouched.",
-      "items": {
+      "additionalProperties": {
         "$ref": "#/definitions/table"
       },
+      "description": "Tables. Omitted tables are left untouched.",
       "title": "Tables",
-      "type": "array"
+      "type": "object"
     }
   },
   "type": "object"

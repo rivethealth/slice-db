@@ -7,10 +7,6 @@ definitions:
     description: Column
     title: Column
     properties:
-      name:
-        description: Name of column
-        title: Name
-        type: string
       transform:
         description: Type of transform
         title: Transform
@@ -19,26 +15,22 @@ definitions:
         default:
         description: Parameters for transform
         title: Transform parameters
-    required: [transform, name]
+    required: [transform]
     type: object
   table:
     description: Table
     properties:
-      id:
-        description: ID of table
-        title: ID
-        type: string
       columns:
+        additionalProperties: { $ref: "#/definitions/column" }
         description: Columns. Omitted columns are left untouched.
-        items: { $ref: "#/definitions/column" }
         title: Columns
-        type: array
+        type: object
     title: Table
     type: object
 properties:
   tables:
+    additionalProperties: { $ref: "#/definitions/table" }
     description: Tables. Omitted tables are left untouched.
-    items: { $ref: "#/definitions/table" }
     title: Tables
-    type: array
+    type: object
 type: object

@@ -13,10 +13,10 @@ def query_schema(cur):
                 (
                     SELECT
                         coalesce(
-                            json_agg(
+                            json_object_agg(
+                                pn.nspname || '.' || pc.relname,
                                 json_build_object(
                                     'columns', pa.columns,
-                                    'id', pn.nspname || '.' || pc.relname,
                                     'name', pc.relname,
                                     'schema', pn.nspname
                                 )
@@ -39,16 +39,16 @@ def query_schema(cur):
                 CROSS JOIN (
                     SELECT
                         coalesce(
-                            json_agg(
+                            json_object_agg(
+                                pn.nspname || '.' || pc2.relname || '.' || pc.conname,
                                 json_build_object(
                                     'columns', pa.columns,
-                                    'id', pn.nspname || '.' || pc2.relname || '.' || pc.conname,
                                     'referenceColumns', pa.reference_columns,
                                     'referenceTable', pn2.nspname || '.' || pc3.relname,
                                     'table', pn.nspname || '.' || pc2.relname
                                 )
                             ),
-                            '[]'
+                            '{}'
                         ) AS references
                     FROM
                         pg_constraint AS pc

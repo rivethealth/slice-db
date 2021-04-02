@@ -17,11 +17,6 @@
           "title": "Column",
           "type": "array"
         },
-        "id": {
-          "description": "ID of table",
-          "title": "ID",
-          "type": "string"
-        },
         "name": {
           "description": "Name of table",
           "title": "Name",
@@ -41,7 +36,7 @@
           "type": "array"
         }
       },
-      "required": ["id", "name", "schema", "segments"],
+      "required": ["name", "schema", "segments"],
       "title": "Table",
       "type": "object"
     },
@@ -63,12 +58,12 @@
   "description": "Snapshot manifest",
   "properties": {
     "tables": {
-      "description": "Tables",
-      "items": {
+      "additionalProperties": {
         "$ref": "#/definitions/table"
       },
+      "description": "Tables",
       "title": "Tables",
-      "type": "array"
+      "type": "object"
     }
   },
   "required": ["tables"],

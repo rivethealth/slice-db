@@ -18,29 +18,26 @@ _SCHEMA_SQL = """
 """
 
 _SCHEMA_JSON = {
-    "references": [
-        {
+    "references": {
+        "public.child.child_parent_id_fkey": {
             "columns": ["parent_id"],
-            "id": "public.child.child_parent_id_fkey",
             "referenceColumns": ["id"],
             "referenceTable": "public.parent",
             "table": "public.child",
         }
-    ],
-    "tables": [
-        {
+    },
+    "tables": {
+        "public.parent": {
             "columns": ["id"],
-            "id": "public.parent",
             "name": "parent",
             "schema": "public",
         },
-        {
+        "public.child": {
             "columns": ["id", "parent_id"],
-            "id": "public.child",
             "name": "child",
             "schema": "public",
         },
-    ],
+    },
 }
 
 
