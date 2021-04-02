@@ -59,6 +59,8 @@ PGHOST=myhost slicedb schema > slice.yml
 
 ## Dump
 
+See [dump.yml](schema/dump.yml) for the JSONSchema.
+
 ### Output formats
 
 SliceDB can produce multiple formats:
@@ -74,8 +76,6 @@ Schema can optionally be included. Restoring with schema requires an existing
 empty database.
 
 ### Schema
-
-See [formats/schema.yml](formats/schema.yml) for the JSONSchema.
 
 The `schema` command uses foreign keys to infer relationships between tables. It
 is a suggested starting point.
@@ -107,7 +107,7 @@ dozen MBs of memory.
 
 ## Transformation
 
-See [formats/transform.yml](formats/transform.yml) for the JSONSchema.
+See [transform.yml](schema/transform.yml) for the JSONSchema.
 
 Replacements are deterministic for a given pepper. By default, the pepper is
 randomly generated each run. You may specify it as `--pepper`. Note that
