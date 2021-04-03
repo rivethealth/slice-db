@@ -27,8 +27,9 @@ def test_transform_field_const():
             "abc",
             "--transform",
             "const",
-            "--params", '"X"',
-            "example"
+            "--params",
+            '"X"',
+            "example",
         ]
     )
     assert result.decode("utf-8") == "X\n"
@@ -103,7 +104,7 @@ def test_transform_field_null():
             "abc",
             "--transform",
             "const",
-            "example"
+            "example",
         ]
     )
     assert result.decode("utf-8") == "\n"

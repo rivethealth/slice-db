@@ -19,8 +19,6 @@ def filter_main(args):
 def children(args, input_config: DumpSchema):
     schema = Schema(input_config)
 
-    references = {reference.id: reference for reference in input_config.references}
-
     child_ids = set()
 
     def visit(table: Table):
@@ -34,12 +32,12 @@ def children(args, input_config: DumpSchema):
     for table_id in args.table:
         visit(schema.get_table(table_id))
 
-    for table in schema._tables.values():
+    for table in schema.tables():
         if table.id in child_ids:
             continue
         for reference in table.reverse_references:
             if reference.table.id in child_ids:
-                references[reference.id].directions.remove(
+                input_config.references[reference.id].directions.remove(
                     DumpReferenceDirection.REVERSE
                 )
 

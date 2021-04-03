@@ -13,4 +13,4 @@ def transform_field_main(args):
     else:
         pepper = secrets.token_bytes(8)
 
-    print(transform.transform(args.field, pepper) or '')
+    print(transform.transform(args.field, pepper) or "")

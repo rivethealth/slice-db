@@ -18,9 +18,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "transform"
-      ],
+      "required": ["transform"],
       "type": "object"
     },
     "table": {
