@@ -15,9 +15,11 @@ class CopyFormat:
         i = 0
         result = ""
         while i < len(text):
-            j = text.index("\\", i)
-            if i == -1:
-                result += text[i:j]
+            try:
+                j = text.index("\\", i)
+            except ValueError:
+                result += text[i:]
+                break
             if text[j + 1] == "\\":
                 result += "\\"
             elif text[j + 1] == "b":
