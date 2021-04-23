@@ -12,7 +12,7 @@ It also supports scrubbing sensive data.
 ### Pip
 
 ```sh
-pip3 install psycopg2-binary slice_db
+pip3 install slice-db
 ```
 
 ### Docker
