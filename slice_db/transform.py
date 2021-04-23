@@ -183,7 +183,7 @@ class TableTransformer:
 
     def transform(self, pepper: bytes, input: typing.TextIO, output: typing.TextIO):
         for line in input:
-            row = COPY_FORMAT.parse_raw_row(line)
+            row = COPY_FORMAT.parse_raw_row(line[:-1])
             for field in self._fields:
                 field.apply(row, pepper)
             output.write(COPY_FORMAT.serialize_raw_row(row))
@@ -191,6 +191,6 @@ class TableTransformer:
 
     @staticmethod
     def transform_binary(
-        transformer, pepper: bytes, input: typing.BinaryIO, output: typing.BinaryIO
+        transformer: TableTransformer, pepper: bytes, input: typing.BinaryIO, output: typing.BinaryIO
     ):
         transformer.transform(pepper, _UTF8_READ(input), _UTF8_WRITE(output))
