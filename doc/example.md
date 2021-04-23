@@ -13,14 +13,18 @@ docker run \
   postgres
 ```
 
-Open a new terminal session for the remaining commands.
+For the remaining steps, open a new terminal session and run
+
+```sh
+export PGHOST=localhost
+```
 
 ## Create source database
 
 ```sh
-PGHOST=localhost createdb source
+createdb source
 
-PGHOST=localhost PGDATABASE=source psql -c '
+PGDATABASE=source psql -c '
 CREATE TABLE parent (
     id int PRIMARY KEY
 );
@@ -41,24 +45,37 @@ VALUES (1, 1), (2, 1), (3, 2);
 ## Dump a slice
 
 ```sh
-PGHOST=localhost PGDATABASE=source slicedb schema > schema.json
-PGHOST=localhost PGDATABASE=source slicedb dump --include-schema --root public.parent 'id = 1' --schema schema.json > slice.zip
+PGDATABASE=source slicedb schema > schema.json
+PGDATABASE=source slicedb dump --include-schema --root public.parent 'id = 1' --schema schema.json > slice.zip
 ```
 
 ## Create target database
 
 ```sh
-PGHOST=localhost createdb target
+createdb target
 ```
 
 ## Restore a slice
 
 ```sh
-PGHOST=localhost PGDATABASE=target slicedb restore --include-schema < slice.zip
+PGDATABASE=target slicedb restore --include-schema < slice.zip
 ```
 
 ## Inspect the result
 
 ```sh
-PGHOST=localhost PGDATABASE=target psql -c 'TABLE parent' -c 'TABLE child'
+PGDATABASE=target psql -c 'TABLE parent' -c 'TABLE child'
+```
+
+```
+ id
+----
+  1
+(1 row)
+
+ id | parent_id
+----+-----------
+  1 |         1
+  2 |         1
+(2 rows)
 ```
