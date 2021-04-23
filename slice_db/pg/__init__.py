@@ -1,46 +1,34 @@
+import asyncio
+import contextlib
 import typing
-from contextlib import contextmanager
 
-import psycopg2
-import psycopg2.sql as sql
+import asyncpg
+from pg_sql import SqlObject, sql_list
 
 Snapshot = str
 
-Tid = str
+Tid = [int, int]
 
 
-@contextmanager
-def connection(*args, **kwargs):
-    conn = psycopg2.connect(*args, **kwargs)
+@contextlib.asynccontextmanager
+async def connection_manager(connection: asyncpg.Connection):
     try:
-        yield conn
+        yield connection
     finally:
-        conn.close()
+        connection.close()
 
 
-@contextmanager
-def transaction(conn):
-    with conn, conn.cursor() as cur:
-        yield cur
+async def export_snapshot(conn: asyncpg.Connection) -> Snapshot:
+    return await conn.fetchval("SELECT pg_export_snapshot()")
 
 
-def export_snapshot(cur) -> Snapshot:
-    cur.execute("SELECT pg_export_snapshot()")
-    (snapshot,) = cur.fetchone()
-    return snapshot
+async def set_snapshot(conn: asyncpg.Connection, snapshot: Snapshot):
+    await conn.execute("SET TRANSACTION SNAPSHOT $1", [snapshot])
 
 
-def freeze_transaction(cur, snapshot=None):
-    cur.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
-    if snapshot is not None:
-        cur.execute("SET TRANSACTION SNAPSHOT %s", [snapshot])
-
-
-def defer_constraints(cur, names: typing.List[typing.Tuple[str, str]]):
-    query = sql.SQL("SET CONSTRAINTS {} DEFERRED").format(
-        sql.SQL(", ").join(sql.Identifier(*name) for name in names)
-    )
-    cur.execute(query)
+async def defer_constraints(conn: asyncpg.Connection, names: typing.List[SqlObject]):
+    query = f"SET CONSTRAINTS {sql_list(names)} DEFERRED"
+    await conn.execute(query)
 
 
 def tid_to_int(id: Tid) -> int:
@@ -48,5 +36,5 @@ def tid_to_int(id: Tid) -> int:
     Translate TID to 48-bit integer, where 32 top significant bits are block number,
     and the other 16 bits are the position within the block
     """
-    a, b = map(int, id[1:-1].split(","))
+    a, b = id
     return a * (2 ** (4 * 8)) + b

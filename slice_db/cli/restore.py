@@ -1,15 +1,21 @@
 import contextlib
 
-from ..pg import connection
-from ..restore import RestoreParams, restore
+import asyncpg
+
+from ..restore import RestoreIo, RestoreParams, restore
 from .common import open_bytes_read
 
 
-def restore_main(args):
+async def restore_main(args):
     params = RestoreParams(
         include_schema=args.include_schema,
         parallelism=args.jobs,
         transaction=args.transaction,
     )
 
-    restore(lambda: connection(""), params, lambda: open_bytes_read(args.input))
+    async with asyncpg.create_pool() as pool:
+        io = RestoreIo(
+            conn=lambda: pool.acquire(), input=lambda: open_bytes_read(args.input)
+        )
+
+        await restore(io, params)

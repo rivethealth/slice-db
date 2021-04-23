@@ -4,7 +4,7 @@ import typing
 
 T = typing.TypeVar("T")
 
-DepFn = typing.Callable[[T], typing.List[T]]
+DepFn = typing.Callable[[T], typing.Iterable[T]]
 
 
 class CycleError(Exception):
@@ -26,7 +26,7 @@ def check_cycle(nodes: typing.List[T], deps_fn: DepFn[T]) -> None:
     stack = []
     stack_set = set()
 
-    def f(nodes: typing.List[T]):
+    def f(nodes: typing.Iterable[T]):
         for node in nodes:
             if node in visited:
                 return

@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import dataclasses
 import itertools
@@ -5,12 +6,14 @@ import json
 import logging
 import time
 import typing
-import zipfile
 
-import psycopg2.sql as sql
+import asyncpg
+import pg_sql
 
 from .collection.dict import groups
+from .concurrent import to_thread, wait_success
 from .concurrent.graph import GraphRunner
+from .concurrent.lock import LifoSemaphore
 from .formats.dump import DumpSchema
 from .formats.manifest import (
     MANIFEST_DATA_JSON_FORMAT,
@@ -19,8 +22,8 @@ from .formats.manifest import (
     ManifestTableSegment,
 )
 from .log import TRACE
-from .pg import defer_constraints, transaction
-from .resource import NoArgs
+from .pg import defer_constraints
+from .resource import AsyncResourceFactory, ResourceFactory
 from .slice import SliceReader
 
 
@@ -31,109 +34,153 @@ class RestoreParams:
     transaction: bool
 
 
-def restore(conn_fn, params, file_fn):
-    if not params.include_schema and params.parallelism > 1 and params.transaction:
+@dataclasses.dataclass
+class RestoreIo:
+    conn: AsyncResourceFactory[asyncpg.Connection]
+    input: ResourceFactory[typing.BinaryIO]
+
+
+async def restore(io, params):
+    if 1 < params.parallelism and params.transaction:
         raise Exception("A single transaction must be disabled for parallelism > 1")
 
-    with file_fn() as file, SliceReader(file) as reader:
+    lock = asyncio.Semaphore(params.parallelism)
+
+    with io.input() as file, SliceReader(file) as reader:
         manifest = MANIFEST_DATA_JSON_FORMAT.load(reader.open_manifest)
 
-        items = {
-            id: RestoreItem(id=id, table=table) for id, table in manifest.tables.items()
-        }
-        restore = Restore(reader)
-
-        with conn_fn() as conn, transaction(conn) as cur:
+        async with contextlib.AsyncExitStack() as stack:
             if params.transaction:
+                conn = await stack.enter_async_context(io.conn())
+                await stack.enter_async_context(conn.transaction())
 
-                def cur_factory():
-                    return contextlib.nullcontext(contextlib.nullcontext(cur))
+                @contextlib.asynccontextmanager
+                async def conn_factory():
+                    async with lock:
+                        yield conn
 
             else:
 
-                @contextlib.contextmanager
-                def cur_factory():
-                    with conn_fn() as conn:
-                        yield NoArgs(lambda: transaction(conn))
-
-            runner = GraphRunner(params.parallelism, restore.process, cur_factory)
+                @contextlib.asynccontextmanager
+                async def conn_factory():
+                    async with lock, io.conn() as conn:
+                        yield conn
 
             if params.include_schema:
-                constraints = []
-            else:
-                constraints = get_constaints(cur, manifest.tables)
+                with reader.open_schema("pre-data") as f:
+                    schema_sql = f.read().decode("utf-8")
+                async with conn_factory() as conn:
+                    await conn.execute(schema_sql)
+
+            await _restore_rows(
+                conn_factory=conn_factory,
+                include_schema=params.include_schema,
+                manifest=manifest,
+                reader=reader,
+                transaction=params.transaction,
+            )
+
+            if params.include_schema:
+                with reader.open_schema("post-data") as f:
+                    schema_sql = f.read().decode("utf-8")
+                async with conn_factory() as conn:
+                    await conn.execute(schema_sql)
+
+
+async def _restore_rows(
+    conn_factory: AsyncResourceFactory,
+    include_schema: bool,
+    manifest: Manifest,
+    reader: SliceReader,
+    transaction: bool,
+):
+    if include_schema:
+        constraints = []
+    else:
+        async with conn_factory() as conn:
+            constraints = await get_constaints(conn, manifest.tables)
 
             deferrable_constaints = [
-                [constraint.schema, constraint.name]
+                pg_sql.SqlObject(
+                    pg_sql.SqlId(constraint.schema), pg_sql.SqlId(constraint.name)
+                )
                 for constraint in constraints
                 if constraint.deferrable
             ]
 
             if deferrable_constaints:
+                if not transaction:
+                    raise Exception(f"Transaction required to defer {constraints[0]}")
+
                 logging.info("Deferring %d constraints", len(deferrable_constaints))
-                defer_constraints(cur, deferrable_constaints)
+                await defer_constraints(conn, deferrable_constaints)
 
-            deps = groups(
-                (constraint for constraint in constraints if not constraint.deferrable),
-                lambda constraint: constraint.table,
-            )
+    items = {
+        id: RestoreItem(
+            conn_factory=conn_factory,
+            id=id,
+            reader=reader,
+            table=table,
+        )
+        for id, table in manifest.tables.items()
+    }
+    tasks = {id: asyncio.create_task(item()) for id, item in items.items()}
 
-            if params.include_schema:
-                with cur_factory() as conn, conn as cur:
-                    with reader.open_schema("pre-data") as f:
-                        schema_sql = f.read()
-                    cur.execute(schema_sql)
+    for constraint in constraints:
+        if constraint.deferrable:
+            continue
+        item = items[constraint.table]
+        item.deps.append(tasks[constraint.reference_table])
 
-            runner.run(
-                list(items.values()),
-                lambda item: [
-                    items[foreign_key.reference_table] for foreign_key in deps[item.id]
-                ],
-            )
-
-            if params.include_schema:
-                with cur_factory() as conn, conn as cur:
-                    with reader.open_schema("post-data") as f:
-                        schema_sql = f.read()
-                    cur.execute(schema_sql)
+    await wait_success(tasks.values())
 
 
 @dataclasses.dataclass
 class RestoreItem:
+    conn_factory: AsyncResourceFactory[asyncpg.Connection]
     id: str
+    reader: SliceReader
     table: ManifestTable
+    deps: typing.List[asyncio.Task] = dataclasses.field(default_factory=list)
+
+    async def __call__(self):
+        await asyncio.gather(*self.deps)
+
+        async with self.conn_factory() as conn:
+            for i, segment in enumerate(self.table.segments):
+                with self.reader.open_segment(
+                    self.id,
+                    i,
+                ) as file:
+                    await update_data(conn, self.id, self.table, i, segment, file)
 
     def __hash__(self):
         return id(self)
 
 
-class Restore:
-    def __init__(self, slice_reader: SliceReader):
-        self._slice_reader = slice_reader
-
-    def process(self, item: RestoreItem, transaction):
-        with transaction as cur:
-            for i, segment in enumerate(item.table.segments):
-                with self._slice_reader.open_segment(
-                    item.id,
-                    i,
-                ) as file:
-                    update_data(cur, item.id, item.table, i, segment, file)
-
-
-_BUFFER_SIZE = 1024 * 32
-
-
-def update_data(
-    cur, id: str, table: ManifestTable, index: int, segment: ManifestTableSegment, in_
+async def update_data(
+    conn: asyncpg.Connection,
+    id: str,
+    table: ManifestTable,
+    index: int,
+    segment: ManifestTableSegment,
+    in_: typing.BinaryIO,
 ):
     logging.log(TRACE, f"Restoring %s rows into table %s", segment.row_count, id)
     start = time.perf_counter()
-    cur.copy_from(
-        in_,
-        sql.Identifier(table.schema, table.name).as_string(cur),
-        columns=[sql.Identifier(column).as_string(cur) for column in table.columns],
-        size=_BUFFER_SIZE,
+
+    async def source():
+        while True:
+            bytes = await to_thread(in_.read, 1024 * 32)
+            if not bytes:
+                break
+            yield bytes
+
+    await conn.copy_to_table(
+        table.name,
+        source=source(),
+        schema_name=table.schema,
+        columns=table.columns,
     )
     end = time.perf_counter()
     logging.debug(
@@ -158,44 +205,44 @@ class ForeignKey:
     """Referenced table ID"""
 
 
-def get_constaints(
-    cur, manifest_tables: typing.Dict[str, ManifestTable]
+async def get_constaints(
+    conn: asyncpg.Connection, manifest_tables: typing.Dict[str, ManifestTable]
 ) -> typing.List[ForeignKey]:
     """
     Query PostgreSQL for constraints between tables
     """
-    cur.execute(
-        """
-            WITH
-                "table" AS (
-                    SELECT *
-                    FROM unnest(%s::text[], %s::text[], %s::text[]) AS t (id, schema, name)
-                )
-            SELECT
-                pn.nspname,
-                pc.conname,
-                a.id,
-                b.id,
-                pc.condeferrable
-            FROM
-                pg_constraint AS pc
-                JOIN pg_class AS pc2 ON pc.conrelid = pc2.oid
-                JOIN pg_namespace AS pn ON pc2.relnamespace = pn.oid
-                JOIN "table" AS a ON (pn.nspname, pc2.relname) = (a.schema, a.name)
-                JOIN pg_class AS pc3 ON pc.confrelid = pc3.oid
-                JOIN pg_namespace AS pn2 ON pc3.relnamespace = pn2.oid
-                JOIN "table" AS b ON (pn2.nspname, pc3.relname) = (b.schema, b.name)
-            WHERE pc.contype = 'f'
-        """,
-        [
-            list(manifest_tables.keys()),
-            [table.schema for table in manifest_tables.values()],
-            [table.name for table in manifest_tables.values()],
-        ],
+
+    query = """
+        WITH
+            "table" AS (
+                SELECT *
+                FROM unnest($1::text[], $2::text[], $3::text[]) AS t (id, schema, name)
+            )
+        SELECT
+            pn.nspname,
+            pc.conname,
+            a.id,
+            b.id,
+            pc.condeferrable
+        FROM
+            pg_constraint AS pc
+            JOIN pg_class AS pc2 ON pc.conrelid = pc2.oid
+            JOIN pg_namespace AS pn ON pc2.relnamespace = pn.oid
+            JOIN "table" AS a ON (pn.nspname, pc2.relname) = (a.schema, a.name)
+            JOIN pg_class AS pc3 ON pc.confrelid = pc3.oid
+            JOIN pg_namespace AS pn2 ON pc3.relnamespace = pn2.oid
+            JOIN "table" AS b ON (pn2.nspname, pc3.relname) = (b.schema, b.name)
+        WHERE pc.contype = 'f'
+    """
+    rows = await conn.fetch(
+        query,
+        list(manifest_tables.keys()),
+        [table.schema for table in manifest_tables.values()],
+        [table.name for table in manifest_tables.values()],
     )
 
     foreign_keys = []
-    for schema, name, table, reference_table, deferrable in cur.fetchall():
+    for schema, name, table, reference_table, deferrable in rows:
         foreign_keys.append(
             ForeignKey(
                 deferrable=deferrable,

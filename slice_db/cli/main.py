@@ -1,11 +1,16 @@
 import argparse
+import asyncio
 import logging
 import warnings
+
+import uvloop
 
 from ..log import TRACE
 from ..version import __version__
 
 warnings.filterwarnings("ignore")
+
+uvloop.install()
 
 
 class LogLevel:
@@ -24,15 +29,15 @@ def main():
     if args.command == "dump":
         from .dump import dump_main
 
-        dump_main(args)
+        asyncio.run(dump_main(args))
     elif args.command == "restore":
         from .restore import restore_main
 
-        restore_main(args)
+        asyncio.run(restore_main(args))
     elif args.command == "schema":
         from .schema import schema_main
 
-        schema_main(args)
+        asyncio.run(schema_main(args))
     elif args.command == "schema-filter":
         from .schema_filter import filter_main
 

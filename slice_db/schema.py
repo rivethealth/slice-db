@@ -1,8 +1,13 @@
-def query_schema(cur):
+import json
+
+import asyncpg
+
+
+async def query_schema(conn: asyncpg.Connection):
     """
     Query PostgreSQL for schema
     """
-    cur.execute(
+    schema = await conn.fetchval(
         """
             SELECT
                 json_build_object(
@@ -71,5 +76,4 @@ def query_schema(cur):
         """
     )
 
-    (schema_json,) = cur.fetchone()
-    return schema_json
+    return json.loads(schema)

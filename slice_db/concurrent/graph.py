@@ -1,47 +1,52 @@
+import asyncio
 import contextlib
-import threading
 import typing
 
 from ..graph import DepFn, check_cycle
-from .work import WorkerRunner
+from . import wait_success
 
-T = typing.TypeVar("T", bound=typing.Hashable)
+AsyncCallable = typing.Callable[[], typing.Awaitable[None]]
+
+T = typing.TypeVar("T", bound=AsyncCallable)  # And typing.Hashable
 
 
-class ActionNode(typing.Generic[T]):
-    def __init__(self, value: T, dependency_count: int):
-        self.value = value
+class ActionNode:
+    def __init__(self, fn: AsyncCallable):
+        self.fn = fn
         self.reverse_dependencies = []
-        self._dependency_count = dependency_count
-        self._lock = threading.Lock()
+        self._dependency_count = 0
 
     def can_execute(self):
         return not self._dependency_count
 
+    def add_dep(self):
+        self._dependency_count += 1
+
     def remove_dep(self):
-        with self._lock:
-            self._dependency_count -= 1
-            return self.can_execute()
+        self._dependency_count -= 1
 
 
-class GraphRunner:
-    def __init__(self, parallelism, handler, resource=contextlib.nullcontext):
-        self._runner = WorkerRunner(parallelism, self._handle_node, resource)
-        self._handler = handler
+class GraphRunner(typing.Generic[T]):
+    def __init__(self, dep_fn: DepFn[T]):
+        self._dep_fn = dep_fn
 
-    def run(self, items: typing.List[T], dep_fn: DepFn[T]):
-        check_cycle(items, dep_fn)
+    async def run(self, items: typing.Iterable[T]):
+        check_cycle(items, self._dep_fn)
 
-        nodes = {item: ActionNode(item, len(dep_fn(item))) for item in items}
+        nodes = {item: ActionNode(item) for item in items}
 
         for item, node in nodes.items():
-            for dep in dep_fn(item):
+            for dep in self._dep_fn(item):
+                node.add_dep()
                 nodes[dep].reverse_dependencies.append(node)
 
-        self._runner.run([node for node in nodes.values() if node.can_execute()])
+        await self._process_nodes(nodes.values())
 
-    def _handle_node(self, item: ActionNode, resource):
-        self._handler(item.value, resource)
+    async def _run_node(self, item: ActionNode):
+        await item.fn()
         for dep in item.reverse_dependencies:
-            if dep.remove_dep():
-                yield dep
+            dep.remove_dep()
+        await self._process_nodes(item.reverse_dependencies)
+
+    async def _process_nodes(self, items: typing.Iterable[ActionNode]):
+        await wait_success(self._run_node(item) for item in items if item.can_execute())

@@ -51,13 +51,13 @@ test-format: target/format-test.target
 target/format.target: $(FORMAT_SRC) target/node_modules.target
 	mkdir -p $(@D)
 	isort --profile black $(FORMAT_SRC)
-	black $(FORMAT_SRC)
+	black -t py37 $(FORMAT_SRC)
 	node_modules/.bin/prettier --write .
 	touch $@ target/format-test.target
 
 target/format-test.target: $(FORMAT_SRC)
 	mkdir -p $(@D)
-	black --check $(FORMAT_SRC)
+	black -t py37 --check $(FORMAT_SRC)
 	touch $@ target/format.target
 
 ###

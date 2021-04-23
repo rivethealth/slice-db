@@ -2,14 +2,13 @@ import codecs
 import contextlib
 import typing
 
-import psycopg2.sql as sql
+from pg_sql import SqlId, SqlObject, sql_list
 
 _UTF_8_WRITER = codecs.getwriter("utf-8")
 
 
 class SqlWriter:
-    def __init__(self, context, file):
-        self._context = context
+    def __init__(self, file):
         self._file = file
 
     def open_predata(self):
@@ -26,11 +25,10 @@ class SqlWriter:
 
         text_writer.write(f"--\n-- Data for {id}/{index}\n--\n")
 
-        query = sql.SQL("COPY {} ({}) FROM stdin;\n").format(
-            sql.Identifier(schema, table),
-            sql.SQL(", ").join(sql.Identifier(column) for column in columns),
-        )
-        text_writer.write(query.as_string(self._context))
+        table_sql = SqlObject(SqlId(schema), SqlId(table))
+        columns_sql = sql_list(SqlId(column) for column in columns)
+        query = f"COPY {table_sql} ({columns_sql}) FROM stdin;\n"
+        text_writer.write(query)
 
         yield self._file
 

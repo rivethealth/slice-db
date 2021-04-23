@@ -28,7 +28,14 @@ setuptools.setup(
     extras_require={"dev": ["black", "pytest-env", "isort", "pytest", "snapshottest"]},
     long_description=long_description,
     long_description_content_type="text/markdown",
-    install_requires=["dataclasses_json==0.3.7", "jsonschema", "numpy"],
+    install_requires=[
+        "asyncpg",
+        "dataclasses_json==0.3.7",
+        "jsonschema",
+        "numpy",
+        "pg-sql",
+        "uvloop",
+    ],
     name="slice-db",
     packages=setuptools.find_packages(),
     package_data={

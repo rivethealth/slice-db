@@ -1,22 +1,24 @@
 from __future__ import annotations
 
+import asyncio
 import collections
 import contextlib
 import dataclasses
 import enum
+import functools
 import logging
 import shutil
-import subprocess
 import tempfile
-import threading
 import time
 import typing
 
+import asyncpg
 import numpy
-import psycopg2.sql as sql
+from pg_sql import SqlId, SqlObject, sql_list
 
 from .collection.set import IntSet
-from .concurrent.work import Worker, WorkerRunner
+from .concurrent import to_thread, wait_success
+from .concurrent.lock import LifoSemaphore
 from .formats.dump import (
     DUMP_DATA_JSON_FORMAT,
     DumpReferenceDirection,
@@ -31,8 +33,8 @@ from .formats.manifest import (
 )
 from .formats.transform import TRANSFORM_DATA_JSON_FORMAT
 from .log import TRACE
-from .pg import Tid, export_snapshot, freeze_transaction, tid_to_int, transaction
-from .resource import ResourceFactory
+from .pg import Tid, export_snapshot, set_snapshot, tid_to_int
+from .resource import AsyncResourceFactory, ResourceFactory
 from .slice import SliceWriter
 from .sql import SqlWriter
 from .transform import TableTransformer
@@ -45,10 +47,10 @@ class OutputType(enum.Enum):
 
 @dataclasses.dataclass
 class DumpIo:
-    conn: ResourceFactory
-    schema_file: ResourceFactory[typing.TextIO]
+    conn: AsyncResourceFactory[asyncpg.Connection]
     output: ResourceFactory[typing.BinaryIO]
-    transform_file: typing.Optional[ResourceFactory[typing.TextIO]]
+    schema_file: ResourceFactory[typing.TextIO]
+    transform_file: typing.Optional[AsyncResourceFactory[typing.TextIO]]
 
 
 @dataclasses.dataclass
@@ -59,7 +61,7 @@ class DumpParams:
     output_type: OutputType
 
 
-def dump(
+async def dump(
     root_configs: typing.List[DumpRoot],
     io: DumpIo,
     params: DumpParams,
@@ -75,7 +77,7 @@ def dump(
             table = schema.get_table(root_config.table)
         except KeyError:
             raise Exception(f"Root table {root_config.table} does not exist")
-        roots.append(Root(table=table, condition=sql.SQL(root_config.condition)))
+        roots.append(Root(table=table, condition=root_config.condition))
 
     if io.transform_file is None:
         transformers = {}
@@ -86,46 +88,56 @@ def dump(
             for id, transform_table in transform.tables.items()
         }
 
-    with io.output() as file, io.conn() as conn, contextlib.ExitStack() as stack:
+    with io.output() as file, contextlib.ExitStack() as stack:
         if params.output_type == OutputType.SLICE:
             slice_writer = stack.enter_context(SliceWriter(file))
             output = _SliceOutput(slice_writer)
         elif params.output_type == OutputType.SQL:
-            sql_writer = SqlWriter(conn, file)
+            sql_writer = SqlWriter(file)
             if params.include_schema:
                 # must add schema before others
                 with sql_writer.open_predata() as f:
-                    _pg_dump_section("pre-data", f)
+                    await _pg_dump_section("pre-data", f)
             output = _SqlOutput(sql_writer)
 
         result = _DiscoveryResult()
 
-        with transaction(conn) as cur:
+        isolation = "repeatable_read" if params.parallelism == 1 else None
+        async with io.conn() as conn, conn.transaction(
+            isolation=isolation,
+            # https://github.com/MagicStack/asyncpg/issues/743
+            # readonly=True
+        ):
             if params.parallelism == 1:
-                freeze_transaction(cur)
 
-                def pg_manager():
-                    return contextlib.nullcontext(cur)
+                @contextlib.asynccontextmanager
+                async def conn_factory():
+                    yield conn
 
             else:
-                snapshot = export_snapshot(cur)
+                snapshot = export_snapshot(conn)
                 logging.info("Running at snapshot %s", snapshot)
 
-                @contextlib.contextmanager
-                def pg_manager():
-                    with io.conn() as conn, transaction(conn) as cur:
-                        freeze_transaction(cur, snapshot=snapshot)
-                        yield cur
+                @contextlib.asynccontextmanager
+                async def conn_factory():
+                    async with io.conn() as conn, conn.transaction(
+                        isolation="repeatable_read",
+                        # https://github.com/MagicStack/asyncpg/issues/743
+                        # readonly=True
+                    ):
+                        set_snapshot(conn, snapshot)
+                        yield conn
 
-            _dump_rows(
-                roots,
-                transformers,
-                params.include_schema and params.output_type != OutputType.SQL,
-                params.parallelism,
-                params.pepper,
-                pg_manager,
-                result,
-                output,
+            await _dump_rows(
+                conn_factory=conn_factory,
+                include_schema=params.include_schema
+                and params.output_type != OutputType.SQL,
+                output=output,
+                parallelism=params.parallelism,
+                pepper=params.pepper,
+                result=result,
+                roots=roots,
+                transformers=transformers,
             )
 
         if params.output_type == OutputType.SLICE:
@@ -134,18 +146,18 @@ def dump(
         elif params.output_type == OutputType.SQL:
             if params.include_schema:
                 with sql_writer.open_postdata() as f:
-                    _pg_dump_section("post-data", f)
+                    await _pg_dump_section("post-data", f)
 
 
-def _dump_rows(
-    roots: typing.List[Root],
-    transformers: typing.Dict[str, TableTransformer],
+async def _dump_rows(
+    conn_factory: ResourceFactory[asyncpg.Connection],
     include_schema: bool,
+    output: typing.Union[_SliceOutput, _SqlOutput],
     parallelism: int,
     pepper: bytes,
-    cur_resource: ResourceFactory,
     result,
-    output: typing.Union[_SliceOutput, _SqlOutput],
+    roots: typing.List[Root],
+    transformers: typing.Dict[str, TableTransformer],
 ):
     """
     Dump rows
@@ -156,16 +168,23 @@ def _dump_rows(
     else:
         logging.info("Dumping rows")
     start = time.perf_counter()
-    worker = _Dump(transformers, pepper, result, output)
-    runner = WorkerRunner(parallelism, worker.process_item, cur_resource)
-    items = []
+
+    lock = LifoSemaphore(parallelism)
+    dump = _Dump(
+        conn_factory=conn_factory,
+        lock=lock,
+        output=output,
+        pepper=pepper,
+        result=result,
+        transformers=transformers,
+    )
+    items = dump.root_items(roots)
     if include_schema:
-        items.append(_Dump.SchemaItem(section="pre-data"))
-        items.append(_Dump.SchemaItem(section="post-data"))
-    items += [
-        _Dump.RootItem(table=root.table, condition=root.condition) for root in roots
-    ]
-    runner.run(items)
+        items.append(SchemaItem(section="pre-data", output=output))
+        items.append(SchemaItem(section="post-data", output=output))
+
+    await wait_success(asyncio.create_task(item()) for item in items)
+
     end = time.perf_counter()
     if include_schema:
         logging.info(
@@ -177,64 +196,72 @@ def _dump_rows(
 
 class _SliceOutput:
     """
-    Thread-safe slice output
+    Concurrency-safe slice output
     """
 
     def __init__(self, writer: SliceWriter):
-        self._lock = threading.Lock()
+        self._lock = asyncio.Lock()
         self._writer = writer
 
-    @contextlib.contextmanager
-    def open_schema(self, section: str):
+    @contextlib.asynccontextmanager
+    async def open_schema(self, section: str):
         """
         Open schema for writing
         """
-        with self._lock, self._writer.open_schema(section) as f:
-            yield f
+        async with self._lock:
+            with self._writer.open_schema(section) as f:
+                yield f
 
-    @contextlib.contextmanager
-    def open_segment(self, segment: TableSegment):
+    @contextlib.asynccontextmanager
+    async def open_segment(self, segment: TableSegment):
         """
         Open segment for writing
         """
-        with self._lock, self._writer.open_segment(
-            segment.table.id, segment.index
-        ) as f:
-            yield f
+        async with self._lock:
+            with self._writer.open_segment(segment.table.id, segment.index) as f:
+                yield f
 
 
 class _SqlOutput:
     """
-    Thread-safe SQL output
+    Concurrency-safe SQL output
     """
 
     def __init__(self, writer: SqlWriter):
-        self._lock = threading.Lock()
+        self._lock = asyncio.Lock()
         self._writer = writer
 
     def open_schema(self, section: str):
         raise Exception("Not supported")
 
-    @contextlib.contextmanager
-    def open_segment(self, segment: TableSegment):
-        with self._lock, self._writer.open_data(
-            segment.table.id,
-            segment.index,
-            segment.table.schema,
-            segment.table.name,
-            segment.table.columns,
-        ) as f:
-            yield f
+    @contextlib.asynccontextmanager
+    async def open_segment(self, segment: TableSegment):
+        async with self._lock:
+            with self._writer.open_data(
+                segment.table.id,
+                segment.index,
+                segment.table.schema,
+                segment.table.name,
+                segment.table.columns,
+            ) as f:
+                yield f
 
 
-def _pg_dump_section(section: str, out: typing.BinaryIO) -> str:
+async def _pg_dump_section(section: str, out: typing.BinaryIO) -> str:
     logging.log(TRACE, "Dumping %s schema", section)
     start = time.perf_counter()
-    subprocess.check_call(
-        ["pg_dump", "-B", "--no-acl", "--section", section],
-        stdin=subprocess.DEVNULL,
+    process = await asyncio.subprocess.create_subprocess_exec(
+        "pg_dump",
+        "-B",
+        "--no-acl",
+        "--section",
+        section,
+        stdin=asyncio.subprocess.DEVNULL,
         stdout=out,
     )
+    result = await process.wait()
+    if result:
+        raise Exception(f"pg_dump exited with code {result}")
     end = time.perf_counter()
     logging.debug("Dumped %s schema (%.3fs)", section, end - start)
 
@@ -251,7 +278,6 @@ class _DiscoveryResult:
         self._id_count = 0
         self._row_ids = collections.defaultdict(lambda: IntSet(numpy.int64))
         self._table_manifests = {}
-        self._lock = threading.Lock()
 
     def add(
         self, table: Table, row_ids: typing.List[Tid]
@@ -259,31 +285,30 @@ class _DiscoveryResult:
         """
         Add IDs and return list of newly added segment
         """
-        with self._lock:
-            existing_ids = self._row_ids[table.id]
-            ints = [tid_to_int(id) for id in row_ids]
-            contains = existing_ids.contains(ints)
-            new_ids = [id for id, c in zip(row_ids, contains) if not c]
+        existing_ids = self._row_ids[table.id]
+        ints = [tid_to_int(id) for id in row_ids]
+        contains = existing_ids.contains(ints)
+        new_ids = [id for id, c in zip(row_ids, contains) if not c]
 
-            if not new_ids:
-                return
+        if not new_ids:
+            return
 
-            existing_ids.add([int for int, c in zip(ints, contains) if not c])
-            self._id_count += len(new_ids)
+        existing_ids.add([int for int, c in zip(ints, contains) if not c])
+        self._id_count += len(new_ids)
 
-            if table.id not in self._table_manifests:
-                self._table_manifests[table.id] = ManifestTable(
-                    columns=table.columns,
-                    name=table.name,
-                    schema=table.schema,
-                    segments=[],
-                )
-            table_manifest = self._table_manifests[table.id]
-
-            segment = TableSegment(
-                table=table, row_ids=new_ids, index=len(table_manifest.segments)
+        if table.id not in self._table_manifests:
+            self._table_manifests[table.id] = ManifestTable(
+                columns=table.columns,
+                name=table.name,
+                schema=table.schema,
+                segments=[],
             )
-            table_manifest.segments.append(ManifestTableSegment(row_count=len(new_ids)))
+        table_manifest = self._table_manifests[table.id]
+
+        segment = TableSegment(
+            table=table, row_ids=new_ids, index=len(table_manifest.segments)
+        )
+        table_manifest.segments.append(ManifestTableSegment(row_count=len(new_ids)))
 
         return segment
 
@@ -301,92 +326,47 @@ class _DiscoveryResult:
         return self._table_manifests
 
 
+@dataclasses.dataclass
 class _Dump:
-    @dataclasses.dataclass
-    class RootItem:
-        table: Table
-        """Table"""
-        condition: sql.SQL
-        """Condition"""
+    conn_factory: AsyncResourceFactory[asyncpg.Connection]
+    lock: typing.AsyncContextManager
+    output: _SliceOutput
+    pepper: str
+    result: _DiscoveryResult
+    transformers: typing.Dict[str, TableTransformer]
 
-    @dataclasses.dataclass
-    class ReferenceItem:
-        direction: DumpReferenceDirection
-        """Direction"""
-        reference: Reference
-        """Reference"""
-        segment: TableSegment
-        """Source segment"""
-
-    @dataclasses.dataclass
-    class SchemaItem:
-        section: str
-        """Section"""
-
-    def __init__(
-        self,
-        transformers: typing.Dict[str, TableTransformer],
-        pepper: bytes,
-        result: _DiscoveryResult,
-        output: _SliceOutput,
-    ):
-        self._result = result
-        self._output = output
-        self._pepper = pepper
-        self._transformers = transformers
-
-    def process_item(
-        self, item: typing.Union[_Dump.RootItem, _Dump.ReferenceItem], cur
-    ):
-        """
-        Process item
-        """
-        if isinstance(item, _Dump.RootItem):
-            segment = _discover_table_condition(
-                cur, item.table, item.condition, self._result
-            )
-            if segment is None:
-                return
-            to_table = item.table
-
-            yield from self._table_items(segment)
-        elif isinstance(item, _Dump.ReferenceItem):
-            segment = _discover_reference(
-                cur, item.reference, item.direction, item.segment, self._result
-            )
-            if segment is None:
-                return
-
-            if item.direction == DumpReferenceDirection.FORWARD:
-                to_table = item.reference.reference_table
-            elif item.direction == DumpReferenceDirection.REVERSE:
-                to_table = item.reference.table
-
-            yield from self._table_items(segment, reference_item=item)
-        elif isinstance(item, _Dump.SchemaItem):
-            with tempfile.TemporaryFile() as tmp:
-                _pg_dump_section(item.section, tmp)
-                tmp.seek(0)
-                with self._output.open_schema(item.section) as f:
-                    shutil.copyfileobj(tmp, f)
-                return
-
+    async def dump_segment(self, to_table: Table, segment: TableSegment):
         with tempfile.TemporaryFile() as tmp:
-            _dump_data(cur, to_table, segment.row_ids, tmp)
+            async with self.conn_factory() as conn:
+                await _dump_data(conn, to_table, segment.row_ids, tmp)
             tmp.seek(0)
-            with self._output.open_segment(segment) as f:
+            async with self.output.open_segment(segment) as f:
                 try:
-                    transformer = self._transformers[to_table.id]
+                    transformer = self.transformers[to_table.id]
                 except KeyError:
-                    shutil.copyfileobj(tmp, f)
+                    await to_thread(shutil.copyfileobj, tmp, f)
                 else:
-                    TableTransformer.transform_binary(transformer, self._pepper, tmp, f)
+                    await to_thread(
+                        TableTransformer.transform_binary,
+                        transformer,
+                        self.pepper,
+                        tmp,
+                        f,
+                    )
 
-    def _table_items(
+    def root_items(self, roots: typing.List[Root]):
+        return [
+            RootItem(table=root.table, condition=root.condition, dump=self)
+            for root in roots
+        ]
+
+    async def next(
         self,
         segment: TableSegment,
-        reference_item: _Dump.ReferenceItem = None,
+        reference_item: ReferenceItem = None,
     ):
+        items: typing.List[ReferenceItem] = []
+
         """
         Create items for table
         """
@@ -399,10 +379,13 @@ class _Dump:
                 and reference_item.direction == DumpReferenceDirection.REVERSE
             ):
                 continue
-            yield _Dump.ReferenceItem(
-                segment=segment,
-                reference=reference,
-                direction=DumpReferenceDirection.FORWARD,
+            items.append(
+                ReferenceItem(
+                    dump=self,
+                    segment=segment,
+                    reference=reference,
+                    direction=DumpReferenceDirection.FORWARD,
+                )
             )
         for reference in segment.table.reverse_references:
             if DumpReferenceDirection.REVERSE not in reference.directions:
@@ -413,11 +396,101 @@ class _Dump:
                 and reference_item.direction == DumpReferenceDirection.FORWARD
             ):
                 continue
-            yield _Dump.ReferenceItem(
-                segment=segment,
-                reference=reference,
-                direction=DumpReferenceDirection.REVERSE,
+            items.append(
+                ReferenceItem(
+                    dump=self,
+                    segment=segment,
+                    reference=reference,
+                    direction=DumpReferenceDirection.REVERSE,
+                )
             )
+
+        await wait_success(asyncio.create_task(item()) for item in items)
+
+
+@dataclasses.dataclass
+class RootItem:
+    table: Table
+    condition: str
+    dump: _Dump
+
+    async def __call__(self):
+        task: asyncio.Task = None
+
+        try:
+            async with self.dump.lock:
+                async with self.dump.conn_factory() as conn:
+                    segment = await _discover_table_condition(
+                        conn, self.table, self.condition, self.dump.result
+                    )
+                    if segment is None:
+                        return
+
+                task = asyncio.create_task(self.dump.next(segment))
+
+                await self.dump.dump_segment(self.table, segment)
+        except:
+            if task is not None:
+                task.cancel()
+                asyncio.wait([task])
+            raise
+
+        if task is not None:
+            await task
+
+
+@dataclasses.dataclass
+class ReferenceItem:
+    direction: DumpReferenceDirection
+    reference: Reference
+    segment: TableSegment
+    dump: _Dump
+
+    async def __call__(self):
+        task: asyncio.Task = None
+
+        try:
+            async with self.dump.lock:
+                async with self.dump.conn_factory() as conn:
+                    segment = await _discover_reference(
+                        conn,
+                        self.reference,
+                        self.direction,
+                        self.segment,
+                        self.dump.result,
+                    )
+                    if segment is None:
+                        return
+
+                if self.direction == DumpReferenceDirection.FORWARD:
+                    to_table = self.reference.reference_table
+                elif self.direction == DumpReferenceDirection.REVERSE:
+                    to_table = self.reference.table
+
+                task = asyncio.create_task(self.dump.next(segment, reference_item=self))
+
+                await self.dump.dump_segment(to_table, segment)
+        except:
+            if task is not None:
+                task.cancel()
+                asyncio.wait([task])
+            raise
+
+        if task is not None:
+            await task
+
+
+@dataclasses.dataclass
+class SchemaItem:
+    section: str
+    output: _SliceOutput
+
+    async def __call__(self):
+        with tempfile.TemporaryFile() as tmp:
+            await _pg_dump_section(self.section, tmp)
+            tmp.seek(0)
+            async with self.output.open_schema(self.section) as f:
+                await to_thread(shutil.copyfileobj, tmp, f)
 
 
 @dataclasses.dataclass
@@ -426,7 +499,7 @@ class Root:
 
     table: Table
     """Table"""
-    condition: sql.SQL
+    condition: str
     """Condition"""
 
 
@@ -446,6 +519,14 @@ class Table:
     """References to parent tables"""
     reverse_references: typing.List[Reference]
     """References to child tables"""
+
+    @property
+    def columns_sql(self):
+        return [SqlId(column) for column in self.columns]
+
+    @property
+    def sql(self):
+        return SqlObject(SqlId(self.schema), SqlId(self.name))
 
 
 @dataclasses.dataclass
@@ -530,54 +611,39 @@ class Schema:
         return self._tables.values()
 
 
-def _dump_data(cur, table: Table, ids: typing.List[Tid], out):
+async def _dump_data(
+    conn: asyncpg.Connection, table: Table, ids: typing.List[Tid], out: typing.BinaryIO
+):
     """
     Dump data
     """
 
     logging.log(TRACE, f"Dumping %s rows from table %s", len(ids), table.id)
     start = time.perf_counter()
-    query = sql.SQL(
-        """
-            COPY (
-                SELECT {}
-                FROM {}
-                WHERE ctid = ANY({}::tid[])
-            )
-            TO STDOUT
-        """
-    ).format(
-        sql.SQL(", ").join([sql.Identifier(column) for column in table.columns]),
-        sql.Identifier(table.schema, table.name),
-        sql.Literal(ids),
+
+    await conn.execute("CREATE TEMP TABLE _slicedb (_ctid tid) ON COMMIT DROP")
+    await conn.copy_records_to_table(
+        "_slicedb", records=[[id] for id in ids], schema_name="pg_temp"
     )
-    cur.copy_expert(query, out, size=1024 * 32)
+    query = f"SELECT {sql_list(table.columns_sql)} FROM {table.sql} AS t JOIN _slicedb AS s ON t.ctid = s._ctid"
+    await conn.copy_from_query(query, output=functools.partial(to_thread, out.write))
+    await conn.execute("DROP TABLE pg_temp._slicedb")
     end = time.perf_counter()
     logging.debug(
         f"Dumped %s rows from table %s (%.3fs)", len(ids), table.id, end - start
     )
 
 
-def _discover_table_condition(
-    cur, table: Table, condition: sql.SQL, result: _DiscoveryResult
+async def _discover_table_condition(
+    conn: asyncpg.Connection, table: Table, condition: str, result: _DiscoveryResult
 ) -> typing.List[Tid]:
     """
     Discover, using root
     """
     logging.log(TRACE, f"Finding rows from table %s", table.id)
     start = time.perf_counter()
-    query = sql.SQL(
-        """
-            SELECT ctid
-            FROM {}
-            WHERE {}
-        """
-    ).format(
-        sql.Identifier(table.schema, table.name),
-        condition,
-    )
-    cur.execute(query)
-    found_ids = [id_ for id_, in cur.fetchall()]
+    query = f"SELECT ctid FROM {table.sql} WHERE {condition}"
+    found_ids = [id_ for id_, in await conn.fetch(query)]
     segment = result.add(table, found_ids) if found_ids else None
     end = time.perf_counter()
     if segment is None:
@@ -600,8 +666,8 @@ def _discover_table_condition(
     return segment
 
 
-def _discover_reference(
-    cur,
+async def _discover_reference(
+    conn: asyncpg.Connection,
     reference: Reference,
     direction: DumpReferenceDirection,
     segment: TableSegment,
@@ -630,21 +696,15 @@ def _discover_reference(
         reference.id,
     )
     start = time.perf_counter()
-    query = sql.SQL(
-        """
-            SELECT DISTINCT b.ctid
-            FROM {} AS a
-                JOIN {} AS b ON ({}) = ({})
-            WHERE a.ctid = ANY(%s::tid[])
-        """
-    ).format(
-        sql.Identifier(from_table.schema, from_table.name),
-        sql.Identifier(to_table.schema, to_table.name),
-        sql.SQL(", ").join([sql.Identifier("a", name) for name in from_columns]),
-        sql.SQL(", ").join([sql.Identifier("b", name) for name in to_columns]),
-    )
-    cur.execute(query, [segment.row_ids])
-    found_ids = [id_ for id_, in cur.fetchall()]
+    from_expr = sql_list([SqlObject(SqlId("a"), SqlId(name)) for name in from_columns])
+    to_expr = sql_list([SqlObject(SqlId("b"), SqlId(name)) for name in to_columns])
+    query = f"""
+        SELECT DISTINCT b.ctid
+        FROM {from_table.sql} AS a
+            JOIN {to_table.sql} AS b ON ({from_expr}) = ({to_expr})
+        WHERE a.ctid = ANY($1::tid[])
+    """
+    found_ids = [id_ for id_, in await conn.fetch(query, [segment.row_ids])]
 
     new_segment = result.add(to_table, found_ids) if found_ids else None
     end = time.perf_counter()
