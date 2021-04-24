@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import codecs
 import datetime
 import hashlib
@@ -191,6 +193,9 @@ class TableTransformer:
 
     @staticmethod
     def transform_binary(
-        transformer: TableTransformer, pepper: bytes, input: typing.BinaryIO, output: typing.BinaryIO
+        transformer: TableTransformer,
+        pepper: bytes,
+        input: typing.BinaryIO,
+        output: typing.BinaryIO,
     ):
         transformer.transform(pepper, _UTF8_READ(input), _UTF8_WRITE(output))

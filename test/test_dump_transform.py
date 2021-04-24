@@ -112,4 +112,4 @@ def test_dump_transform(pg_database, snapshot):
 
             cur.execute("SELECT * FROM child ORDER BY id")
             result = cur.fetchall()
-            assert result == [(1, 1, "Shellie"), (2, 1, "Vonda")]
+            assert result == [(1, 1, "Judson"), (2, 1, "Shirley")]
