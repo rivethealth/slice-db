@@ -5,8 +5,11 @@ import datetime
 import hashlib
 import importlib.resources as pkg_resources
 import random
+import string
 import typing
 import unicodedata
+
+import pyffx
 
 from .collection.dict import groups
 from .formats.transform import TransformColumn, TransformTable
@@ -39,10 +42,28 @@ class IntRange:
         return self._min + x
 
 
+LOWERCASE_CATEGORIES = set(["Ll", "Lm", "Lo"])
+NUMERIC_CATEGORIES = set(["Nd", "Nl", "No"])
+UPPERCASE_CATEGORIES = set(["Lu", "Lt", "Co", "Cs", "So"])
+
+alphanumeric = string.ascii_lowercase + string.ascii_uppercase + string.digits
+
+
 class AlphanumericTransform:
+    def __init__(self, unique=False):
+        self.unique = unique
+
     def transform(self, text: typing.Optional[str], pepper: bytes):
         if text is None:
             return None
+
+        if self.unique:
+            c = pyffx.String(pepper, alphabet=alphanumeric, length=len(text))
+            text = "".join(
+                c if c in alphanumeric else alphanumeric[ord(c) % len(alphanumeric)]
+                for c in text
+            )
+            return c.encrypt(text)
 
         rnd = random.Random(bytes_hash_int(text.encode("utf-8") + pepper))
         result = "".join(self._replace(rnd, c) for c in text)
@@ -140,7 +161,7 @@ class GeozipTransform:
 
 def create_transform(type, params):
     if type == "alphanumeric":
-        return AlphanumericTransform()
+        return AlphanumericTransform(**(params or {}))
     if type == "const":
         return ConstTransform(params)
     if type == "date_year":

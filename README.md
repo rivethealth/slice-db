@@ -115,27 +115,55 @@ possession of the pepper makes the data guessable.
 
 Transformation may operate an existing slice, or happen during the dump.
 
-### Replacments
+### Transforms
 
-- `alphanumeric` - Replace alphanumeric characters, preserve the type and case
-  of characters.
-- `const` - Constant value.
-- `date_year` - Change date by up to one year.
-- `geozip` - Replace zip code, preserving the first three digits.
-- `given_name` - Replace given name.
-- `null` - Null value.
-- `person_name` - Replace name.
-- `surname` - Replace surname.
-- `composite` - Parse as a PostgreSQL composite, with suboptions.
+#### alphanumeric
 
-### Replacement data
+Replace alphanumeric characters, preserve the type and case of characters.
 
-- Given names:
-  [https://www.ssa.gov/cgi-bin/popularnames.cgi](https://www.ssa.gov/cgi-bin/popularnames.cgi)
-- Surnames:
-  [https://raw.githubusercontent.com/fivethirtyeight/data/master/most-common-name/surnames.csv](https://raw.githubusercontent.com/fivethirtyeight/data/master/most-common-name/surnames.csv)
-- Zip codes:
-  [https://simplemaps.com/data/us-zips](https://simplemaps.com/data/us-zips)
+- `unique` - Whether to generate a unique value
+
+### composite
+
+Parse as a PostgreSQL composite, with suboptions (TODO).
+
+#### const
+
+Const value
+
+Params are that value
+
+#### date_year
+
+Change date by up to one year.
+
+### geozip
+
+Replace zip code, preserving the first three digits.
+
+Uses [https://simplemaps.com/data/us-zips](https://simplemaps.com/data/us-zips).
+
+### given_name
+
+Replace given name.
+
+Uses
+[https://www.ssa.gov/cgi-bin/popularnames.cgi](https://www.ssa.gov/cgi-bin/popularnames.cgi).
+
+### null
+
+Null value.
+
+### person_name
+
+Replace name.
+
+### surname
+
+Replace surname
+
+Uses
+[https://raw.githubusercontent.com/fivethirtyeight/data/master/most-common-name/surnames.csv](https://raw.githubusercontent.com/fivethirtyeight/data/master/most-common-name/surnames.csv)
 
 ## Restore
 

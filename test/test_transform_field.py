@@ -18,6 +18,23 @@ def test_transform_field_alphanumeric():
     assert result.decode("utf-8") == "262 Eimu Yg $7.96\n"
 
 
+def test_transform_field_alphanumeric_unique():
+    result = run_process(
+        [
+            "slicedb",
+            "transform-field",
+            "--pepper",
+            "abc",
+            "--transform",
+            "alphanumeric",
+            "--params",
+            '{"unique":true}',
+            "abc",
+        ]
+    )
+    assert result.decode("utf-8") == "UJ4\n"
+
+
 def test_transform_field_const():
     result = run_process(
         [
