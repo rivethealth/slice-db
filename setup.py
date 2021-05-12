@@ -34,6 +34,7 @@ setuptools.setup(
         "jsonschema",
         "numpy",
         "pg-sql",
+        "pyffx",
         "uvloop",
     ],
     name="slice-db",
