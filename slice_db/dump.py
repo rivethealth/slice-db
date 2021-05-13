@@ -126,7 +126,7 @@ async def dump(
                         # https://github.com/MagicStack/asyncpg/issues/743
                         # readonly=True
                     ):
-                        set_snapshot(conn, snapshot)
+                        await set_snapshot(conn, snapshot)
                         yield conn
 
             await _dump_rows(
