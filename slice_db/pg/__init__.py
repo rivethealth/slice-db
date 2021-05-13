@@ -31,6 +31,12 @@ async def defer_constraints(conn: asyncpg.Connection, names: typing.List[SqlObje
     await conn.execute(query)
 
 
+def int_to_tid(int: int) -> Tid:
+    a = int // (2 ** (4 * 8))
+    b = int % (2 ** (4 * 8))
+    return a, b
+
+
 def tid_to_int(id: Tid) -> int:
     """
     Translate TID to 48-bit integer, where 32 top significant bits are block number,

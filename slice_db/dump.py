@@ -33,7 +33,7 @@ from .formats.manifest import (
 )
 from .formats.transform import TRANSFORM_DATA_JSON_FORMAT
 from .log import TRACE
-from .pg import Tid, export_snapshot, set_snapshot, tid_to_int
+from .pg import Tid, export_snapshot, int_to_tid, set_snapshot, tid_to_int
 from .resource import AsyncResourceFactory, ResourceFactory
 from .slice import SliceWriter
 from .sql import SqlWriter
@@ -280,20 +280,16 @@ class _DiscoveryResult:
         self._table_manifests = {}
 
     def add(
-        self, table: Table, row_ids: typing.List[Tid]
+        self, table: Table, row_ids: typing.List[int]
     ) -> typing.Optional[TableSegment]:
         """
         Add IDs and return list of newly added segment
         """
         existing_ids = self._row_ids[table.id]
-        ints = [tid_to_int(id) for id in row_ids]
-        contains = existing_ids.contains(ints)
-        new_ids = [id for id, c in zip(row_ids, contains) if not c]
-
+        new_ids = existing_ids.add(row_ids)
         if not new_ids:
             return
 
-        existing_ids.add([int for int, c in zip(ints, contains) if not c])
         self._id_count += len(new_ids)
 
         if table.id not in self._table_manifests:
@@ -549,7 +545,7 @@ class Reference:
 @dataclasses.dataclass
 class TableSegment:
     index: int
-    row_ids: typing.List[Tid]
+    row_ids: typing.List[int]
     table: Table
 
 
@@ -612,7 +608,7 @@ class Schema:
 
 
 async def _dump_data(
-    conn: asyncpg.Connection, table: Table, ids: typing.List[Tid], out: typing.BinaryIO
+    conn: asyncpg.Connection, table: Table, ids: typing.List[int], out: typing.BinaryIO
 ):
     """
     Dump data
@@ -623,7 +619,7 @@ async def _dump_data(
 
     await conn.execute("CREATE TEMP TABLE _slicedb (_ctid tid) ON COMMIT DROP")
     await conn.copy_records_to_table(
-        "_slicedb", records=[[id] for id in ids], schema_name="pg_temp"
+        "_slicedb", records=[[int_to_tid(id)] for id in ids], schema_name="pg_temp"
     )
     query = f"SELECT {sql_list(table.columns_sql)} FROM {table.sql} AS t JOIN _slicedb AS s ON t.ctid = s._ctid"
     await conn.copy_from_query(query, output=functools.partial(to_thread, out.write))
@@ -643,7 +639,7 @@ async def _discover_table_condition(
     logging.log(TRACE, f"Finding rows from table %s", table.id)
     start = time.perf_counter()
     query = f"SELECT ctid FROM {table.sql} WHERE {condition}"
-    found_ids = [id_ for id_, in await conn.fetch(query)]
+    found_ids = [tid_to_int(id_) for id_, in await conn.fetch(query)]
     segment = result.add(table, found_ids) if found_ids else None
     end = time.perf_counter()
     if segment is None:
@@ -704,7 +700,8 @@ async def _discover_reference(
             JOIN {to_table.sql} AS b ON ({from_expr}) = ({to_expr})
         WHERE a.ctid = ANY($1::tid[])
     """
-    found_ids = [id_ for id_, in await conn.fetch(query, [segment.row_ids])]
+    tids = [int_to_tid(id) for id in segment.row_ids]
+    found_ids = [tid_to_int(id_) for id_, in await conn.fetch(query, [tids])]
 
     new_segment = result.add(to_table, found_ids) if found_ids else None
     end = time.perf_counter()

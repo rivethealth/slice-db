@@ -10,13 +10,16 @@ class IntSet:
         self._array = numpy.array([], dtype=dtype)
 
     def add(self, items: typing.List[int]):
-        array = numpy.array(items, dtype=self._dtype)
-        self._array = numpy.concatenate([self._array, array])
-        self._array = numpy.sort(self._array)
-
-    def contains(self, items: typing.List[int]) -> typing.List[bool]:
-        indices = numpy.searchsorted(self._array, items)
-        return [
-            (i < len(self._array) and self._array[i] == item)
-            for i, item in zip(indices, items)
-        ]
+        """
+        Add and return the new items
+        """
+        left = numpy.searchsorted(self._array, items, side="left")
+        right = numpy.searchsorted(self._array, items, side="right")
+        items = [item for item, i, j in zip(items, left, right) if i == j]
+        del left  # otherwise memory test fails
+        del right
+        if items:
+            self._array.resize(len(self._array) + len(items))
+            self._array[-len(items) :] = items
+            self._array.sort()
+        return items
