@@ -103,7 +103,7 @@ async def dump(
 
         result = _DiscoveryResult()
 
-        isolation = "repeatable_read" if params.parallelism != 1 else None
+        isolation = "repeatable_read" if params.parallelism == 1 else None
         async with io.conn() as conn, conn.transaction(
             isolation=isolation,
             # https://github.com/MagicStack/asyncpg/issues/743
