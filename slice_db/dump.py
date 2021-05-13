@@ -115,7 +115,7 @@ async def dump(
                     yield conn
 
             else:
-                snapshot = export_snapshot(conn)
+                snapshot = await export_snapshot(conn)
                 logging.info("Running at snapshot %s", snapshot)
 
                 @contextlib.asynccontextmanager
