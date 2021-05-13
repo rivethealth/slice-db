@@ -23,7 +23,8 @@ async def export_snapshot(conn: asyncpg.Connection) -> Snapshot:
 
 
 async def set_snapshot(conn: asyncpg.Connection, snapshot: Snapshot):
-    await conn.execute("SET TRANSACTION SNAPSHOT $1", [snapshot])
+    # TODO: properly interpolate
+    await conn.execute(f"SET TRANSACTION SNAPSHOT '{snapshot}'")
 
 
 async def defer_constraints(conn: asyncpg.Connection, names: typing.List[SqlObject]):
