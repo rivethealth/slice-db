@@ -104,7 +104,9 @@ async def dump(
 
         isolation = "repeatable_read" if params.parallelism != 1 else None
         async with io.conn() as conn, conn.transaction(
-            isolation=isolation, readonly=True
+            isolation=isolation,
+            # https://github.com/MagicStack/asyncpg/issues/743
+            # readonly=True
         ):
             if params.parallelism == 1:
 
@@ -119,7 +121,9 @@ async def dump(
                 @contextlib.asynccontextmanager
                 async def conn_factory():
                     async with io.conn() as conn, conn.transaction(
-                        isolation="repeatable_read", readonly=True
+                        isolation="repeatable_read",
+                        # https://github.com/MagicStack/asyncpg/issues/743
+                        # readonly=True
                     ):
                         set_snapshot(conn, snapshot)
                         yield conn
