@@ -30,6 +30,7 @@ from .formats.manifest import (
     Manifest,
     ManifestTable,
     ManifestTableSegment,
+    ManifestTableSegmentId,
 )
 from .formats.transform import TRANSFORM_DATA_JSON_FORMAT
 from .log import TRACE
@@ -280,7 +281,7 @@ class _DiscoveryResult:
         self._table_manifests = {}
 
     def add(
-        self, table: Table, row_ids: typing.List[int]
+        self, table: Table, row_ids: typing.List[int], source: typing.List[TableSegment]
     ) -> typing.Optional[TableSegment]:
         """
         Add IDs and return list of newly added segment
@@ -302,9 +303,16 @@ class _DiscoveryResult:
         table_manifest = self._table_manifests[table.id]
 
         segment = TableSegment(
-            table=table, row_ids=new_ids, index=len(table_manifest.segments)
+            table=table,
+            row_ids=new_ids,
+            index=len(table_manifest.segments),
         )
-        table_manifest.segments.append(ManifestTableSegment(row_count=len(new_ids)))
+        manifest_source = [
+            ManifestTableSegmentId(table_id=s.table.id, index=s.index) for s in source
+        ]
+        table_manifest.segments.append(
+            ManifestTableSegment(row_count=len(new_ids), source=manifest_source)
+        )
 
         return segment
 
@@ -359,6 +367,7 @@ class _Dump:
     async def next(
         self,
         segment: TableSegment,
+        source: typing.List[TableSegment],
         reference_item: ReferenceItem = None,
     ):
         items: typing.List[ReferenceItem] = []
@@ -381,6 +390,7 @@ class _Dump:
                     segment=segment,
                     reference=reference,
                     direction=DumpReferenceDirection.FORWARD,
+                    source=source,
                 )
             )
         for reference in segment.table.reverse_references:
@@ -398,6 +408,7 @@ class _Dump:
                     segment=segment,
                     reference=reference,
                     direction=DumpReferenceDirection.REVERSE,
+                    source=source,
                 )
             )
 
@@ -422,7 +433,7 @@ class RootItem:
                     if segment is None:
                         return
 
-                task = asyncio.create_task(self.dump.next(segment))
+                task = asyncio.create_task(self.dump.next(segment, []))
 
                 await self.dump.dump_segment(self.table, segment)
         except:
@@ -441,6 +452,7 @@ class ReferenceItem:
     reference: Reference
     segment: TableSegment
     dump: _Dump
+    source: typing.List[TableSegment]
 
     async def __call__(self):
         task: asyncio.Task = None
@@ -453,6 +465,7 @@ class ReferenceItem:
                         self.reference,
                         self.direction,
                         self.segment,
+                        self.source,
                         self.dump.result,
                     )
                     if segment is None:
@@ -463,7 +476,9 @@ class ReferenceItem:
                 elif self.direction == DumpReferenceDirection.REVERSE:
                     to_table = self.reference.table
 
-                task = asyncio.create_task(self.dump.next(segment, reference_item=self))
+                task = asyncio.create_task(
+                    self.dump.next(segment, self.source, reference_item=self)
+                )
 
                 await self.dump.dump_segment(to_table, segment)
         except:
@@ -545,7 +560,7 @@ class Reference:
 @dataclasses.dataclass
 class TableSegment:
     index: int
-    row_ids: typing.List[int]
+    row_ids: typing.Any
     table: Table
 
 
@@ -640,11 +655,11 @@ async def _discover_table_condition(
     start = time.perf_counter()
     query = f"SELECT ctid FROM {table.sql} WHERE {condition}"
     found_ids = [tid_to_int(id_) for id_, in await conn.fetch(query)]
-    segment = result.add(table, found_ids) if found_ids else None
+    segment = result.add(table, found_ids, []) if found_ids else None
     end = time.perf_counter()
     if segment is None:
         logging.debug(
-            f"Found %s rows (no new) in table %s (%.3fs)",
+            f"Found no rows in table %s (%.3fs)",
             len(found_ids),
             table.id,
             end - start,
@@ -667,6 +682,7 @@ async def _discover_reference(
     reference: Reference,
     direction: DumpReferenceDirection,
     segment: TableSegment,
+    source: typing.List[TableSegment],
     result,
 ) -> typing.List[Tid]:
     """
@@ -703,7 +719,9 @@ async def _discover_reference(
     tids = [int_to_tid(id) for id in segment.row_ids]
     found_ids = [tid_to_int(id_) for id_, in await conn.fetch(query, [tids])]
 
-    new_segment = result.add(to_table, found_ids) if found_ids else None
+    new_segment = (
+        result.add(to_table, found_ids, source + [segment]) if found_ids else None
+    )
     end = time.perf_counter()
     if new_segment is None:
         logging.debug(

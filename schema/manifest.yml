@@ -37,9 +37,27 @@ definitions:
         minimum: 0
         title: Row count
         type: integer
+      source:
+        description: Source
+        item: { $ref: "#/definitions/tableSegmentId" }
+        title: Source
+        type: array
     required: [properties]
     title: Table segment
     type: object
+  tableSegmentId:
+    description: Reference to table segment
+    properties:
+      index:
+        description: Index of segment
+        title: Index
+        type: integer
+      tableId:
+        description: ID of table
+        title: Table ID
+        type: string
+    required: [index, tableId]
+    title: Table segment ID
 description: Snapshot manifest
 properties:
   tables:

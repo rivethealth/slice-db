@@ -8,8 +8,18 @@ from ..json import DataJsonFormat, package_json_format
 
 @dataclasses_json.dataclass_json(letter_case=dataclasses_json.LetterCase.CAMEL)
 @dataclasses.dataclass()
+class ManifestTableSegmentId:
+    table_id: str
+    index: int
+
+
+@dataclasses_json.dataclass_json(letter_case=dataclasses_json.LetterCase.CAMEL)
+@dataclasses.dataclass()
 class ManifestTableSegment:
     row_count: int
+    """Number of rows"""
+    source: typing.List[ManifestTableSegmentId]
+    """Source"""
 
 
 @dataclasses_json.dataclass_json(letter_case=dataclasses_json.LetterCase.CAMEL)
