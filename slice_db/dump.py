@@ -711,8 +711,11 @@ async def _discover_reference(
     start = time.perf_counter()
     from_expr = sql_list([SqlObject(SqlId("a"), SqlId(name)) for name in from_columns])
     to_expr = sql_list([SqlObject(SqlId("b"), SqlId(name)) for name in to_columns])
+    # assumption: add reference has a unique value on the reference table
+    # therefore, no need to dedup child records since they will be had by only one parent
+    distinct = "DISTINCT" if direction == DumpReferenceDirection.FORWARD else ""
     query = f"""
-        SELECT DISTINCT b.ctid
+        SELECT {distinct} b.ctid
         FROM {from_table.sql} AS a
             JOIN {to_table.sql} AS b ON ({from_expr}) = ({to_expr})
         WHERE a.ctid = ANY($1::tid[])
