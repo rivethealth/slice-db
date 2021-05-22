@@ -116,6 +116,7 @@ async def dump(
                     yield conn
 
             else:
+                await conn.execute("SET statement_timeout = 0")
                 snapshot = await export_snapshot(conn)
                 logging.info("Running at snapshot %s", snapshot)
 
