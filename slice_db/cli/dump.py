@@ -5,6 +5,7 @@ import asyncpg
 
 from ..dump import DumpIo, DumpParams, OutputType, dump
 from ..formats.dump import DumpRoot
+from ..pg import server_settings
 from .common import open_bytes_write, open_str_read
 
 
@@ -24,7 +25,10 @@ async def dump_main(args):
         pepper = secrets.token_bytes(8)
 
     async with asyncpg.create_pool(
-        max_inactive_connection_lifetime=10, max_size=args.jobs, min_size=0
+        max_inactive_connection_lifetime=10,
+        max_size=args.jobs,
+        min_size=0,
+        server_settings=server_settings(),
     ) as pool:
         io = DumpIo(
             conn=lambda: pool.acquire(),

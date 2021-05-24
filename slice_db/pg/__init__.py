@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import os
 import typing
 
 import asyncpg
@@ -10,12 +11,17 @@ Snapshot = str
 Tid = [int, int]
 
 
+def server_settings():
+    application_name = os.environ.get("PGAPPNAME", "slice_db")
+    server_settings = {"application_name": application_name}
+
+
 @contextlib.asynccontextmanager
 async def connection_manager(connection: asyncpg.Connection):
     try:
         yield connection
     finally:
-        connection.close()
+        await connection.close()
 
 
 async def export_snapshot(conn: asyncpg.Connection) -> Snapshot:
