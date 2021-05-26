@@ -8,8 +8,6 @@ from pg_sql import SqlObject, sql_list
 
 Snapshot = str
 
-Tid = [int, int]
-
 
 def server_settings():
     application_name = os.environ.get("PGAPPNAME", "slice_db")
@@ -38,16 +36,19 @@ async def defer_constraints(conn: asyncpg.Connection, names: typing.List[SqlObje
     await conn.execute(query)
 
 
-def int_to_tid(int: int) -> Tid:
-    a = int // (2 ** (4 * 8))
-    b = int % (2 ** (4 * 8))
-    return a, b
+def tid_decoder(bytes: bytes) -> int:
+    return int.from_bytes(bytes, "big")
 
 
-def tid_to_int(id: Tid) -> int:
-    """
-    Translate TID to 48-bit integer, where 32 top significant bits are block number,
-    and the other 16 bits are the position within the block
-    """
-    a, b = id
-    return a * (2 ** (4 * 8)) + b
+def tid_encoder(int: int) -> bytes:
+    return int.to_bytes(6, "big")
+
+
+async def set_tid_codec(conn: asyncpg.Connection):
+    await conn.set_type_codec(
+        "tid",
+        schema="pg_catalog",
+        encoder=tid_encoder,
+        decoder=tid_decoder,
+        format="binary",
+    )

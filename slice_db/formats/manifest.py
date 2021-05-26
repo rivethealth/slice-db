@@ -18,8 +18,6 @@ class ManifestTableSegmentId:
 class ManifestTableSegment:
     row_count: int
     """Number of rows"""
-    source: typing.List[ManifestTableSegmentId]
-    """Source"""
 
 
 @dataclasses_json.dataclass_json(letter_case=dataclasses_json.LetterCase.CAMEL)

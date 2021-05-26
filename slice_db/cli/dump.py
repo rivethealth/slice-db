@@ -4,8 +4,9 @@ import secrets
 import asyncpg
 
 from ..dump import DumpIo, DumpParams, OutputType, dump
+from ..dump_temp_table import TempTableStrategy
 from ..formats.dump import DumpRoot
-from ..pg import server_settings
+from ..pg import server_settings, set_tid_codec
 from .common import open_bytes_write, open_str_read
 
 
@@ -25,8 +26,9 @@ async def dump_main(args):
         pepper = secrets.token_bytes(8)
 
     async with asyncpg.create_pool(
+        init=_init_connection,
         max_inactive_connection_lifetime=10,
-        max_size=args.jobs,
+        max_size=args.jobs + 1,
         min_size=0,
         server_settings=server_settings(),
     ) as pool:
@@ -36,11 +38,20 @@ async def dump_main(args):
             schema_file=lambda: open_str_read(args.schema),
             transform_file=args.transform and (lambda: open_str_read(args.transform)),
         )
+        if args.temp_tables:
+            strategy = TempTableStrategy()
+        else:
+            raise Exception("--no-temp-tables not supported")
         params = DumpParams(
             include_schema=args.include_schema,
             parallelism=args.jobs,
             output_type=output_type,
             pepper=pepper,
+            strategy=strategy,
         )
 
         await dump(roots, io, params)
+
+
+async def _init_connection(conn):
+    await set_tid_codec(conn)

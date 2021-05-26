@@ -19,6 +19,7 @@ from pg_sql import SqlId, SqlObject, sql_list
 from .collection.set import IntSet
 from .concurrent import to_thread, wait_success
 from .concurrent.lock import LifoSemaphore
+from .concurrent.queue import Queue
 from .formats.dump import (
     DUMP_DATA_JSON_FORMAT,
     DumpReferenceDirection,
@@ -30,11 +31,10 @@ from .formats.manifest import (
     Manifest,
     ManifestTable,
     ManifestTableSegment,
-    ManifestTableSegmentId,
 )
 from .formats.transform import TRANSFORM_DATA_JSON_FORMAT
 from .log import TRACE
-from .pg import Tid, export_snapshot, int_to_tid, set_snapshot, tid_to_int
+from .pg import export_snapshot, set_snapshot
 from .resource import AsyncResourceFactory, ResourceFactory
 from .slice import SliceWriter
 from .sql import SqlWriter
@@ -54,12 +54,20 @@ class DumpIo:
     transform_file: typing.Optional[AsyncResourceFactory[typing.TextIO]]
 
 
+class DumpStrategy(typing.Protocol):
+    new_transactions: bool
+
+    def start(self, dump: Dump, roots: typing.List[Root]):
+        pass
+
+
 @dataclasses.dataclass
 class DumpParams:
     include_schema: bool
     parallelism: int
     pepper: bytes
     output_type: OutputType
+    strategy: DumpStrategy
 
 
 async def dump(
@@ -109,7 +117,7 @@ async def dump(
             # https://github.com/MagicStack/asyncpg/issues/743
             # readonly=True
         ):
-            if params.parallelism == 1:
+            if params.parallelism == 1 and not params.strategy.new_transactions:
 
                 @contextlib.asynccontextmanager
                 async def conn_factory():
@@ -139,6 +147,7 @@ async def dump(
                 pepper=params.pepper,
                 result=result,
                 roots=roots,
+                strategy=params.strategy,
                 transformers=transformers,
             )
 
@@ -159,6 +168,7 @@ async def _dump_rows(
     pepper: bytes,
     result,
     roots: typing.List[Root],
+    strategy: DumpStrategy,
     transformers: typing.Dict[str, TableTransformer],
 ):
     """
@@ -171,21 +181,25 @@ async def _dump_rows(
         logging.info("Dumping rows")
     start = time.perf_counter()
 
+    queue = Queue()
     lock = LifoSemaphore(parallelism)
-    dump = _Dump(
+    dump = Dump(
         conn_factory=conn_factory,
         lock=lock,
         output=output,
         pepper=pepper,
         result=result,
         transformers=transformers,
+        queue=queue,
     )
-    items = dump.root_items(roots)
-    if include_schema:
-        items.append(SchemaItem(section="pre-data", output=output))
-        items.append(SchemaItem(section="post-data", output=output))
 
-    await wait_success(asyncio.create_task(item()) for item in items)
+    strategy.start(dump, roots)
+
+    if include_schema:
+        dump.start_task(_SchemaTask(section="pre-data", output=output)())
+        dump.start_task(_SchemaTask(section="post-data", output=output)())
+
+    await queue.finished()
 
     end = time.perf_counter()
     if include_schema:
@@ -282,7 +296,7 @@ class _DiscoveryResult:
         self._table_manifests = {}
 
     def add(
-        self, table: Table, row_ids: typing.List[int], source: typing.List[TableSegment]
+        self, table: Table, row_ids: typing.List[int]
     ) -> typing.Optional[TableSegment]:
         """
         Add IDs and return list of newly added segment
@@ -308,12 +322,7 @@ class _DiscoveryResult:
             row_ids=new_ids,
             index=len(table_manifest.segments),
         )
-        manifest_source = [
-            ManifestTableSegmentId(table_id=s.table.id, index=s.index) for s in source
-        ]
-        table_manifest.segments.append(
-            ManifestTableSegment(row_count=len(new_ids), source=manifest_source)
-        )
+        table_manifest.segments.append(ManifestTableSegment(row_count=len(new_ids)))
 
         return segment
 
@@ -332,168 +341,25 @@ class _DiscoveryResult:
 
 
 @dataclasses.dataclass
-class _Dump:
+class Dump:
     conn_factory: AsyncResourceFactory[asyncpg.Connection]
     lock: typing.AsyncContextManager
     output: _SliceOutput
     pepper: str
     result: _DiscoveryResult
     transformers: typing.Dict[str, TableTransformer]
+    queue: Queue
 
-    async def dump_segment(self, to_table: Table, segment: TableSegment):
-        with tempfile.TemporaryFile() as tmp:
-            async with self.conn_factory() as conn:
-                await _dump_data(conn, to_table, segment.row_ids, tmp)
-            tmp.seek(0)
-            async with self.output.open_segment(segment) as f:
-                try:
-                    transformer = self.transformers[to_table.id]
-                except KeyError:
-                    await to_thread(shutil.copyfileobj, tmp, f)
-                else:
-                    await to_thread(
-                        TableTransformer.transform_binary,
-                        transformer,
-                        self.pepper,
-                        tmp,
-                        f,
-                    )
+    async def _wrap(self, fn: typing.Callable):
+        async with self.lock:
+            return await fn
 
-    def root_items(self, roots: typing.List[Root]):
-        return [
-            RootItem(table=root.table, condition=root.condition, dump=self)
-            for root in roots
-        ]
-
-    async def next(
-        self,
-        segment: TableSegment,
-        source: typing.List[TableSegment],
-        reference_item: ReferenceItem = None,
-    ):
-        items: typing.List[ReferenceItem] = []
-
-        """
-        Create items for table
-        """
-        for reference in segment.table.references:
-            if DumpReferenceDirection.FORWARD not in reference.directions:
-                continue
-            if (
-                reference_item is not None
-                and reference is reference_item.reference
-                and reference_item.direction == DumpReferenceDirection.REVERSE
-            ):
-                continue
-            items.append(
-                ReferenceItem(
-                    dump=self,
-                    segment=segment,
-                    reference=reference,
-                    direction=DumpReferenceDirection.FORWARD,
-                    source=source,
-                )
-            )
-        for reference in segment.table.reverse_references:
-            if DumpReferenceDirection.REVERSE not in reference.directions:
-                continue
-            if (
-                reference_item is not None
-                and reference is reference_item.reference
-                and reference_item.direction == DumpReferenceDirection.FORWARD
-            ):
-                continue
-            items.append(
-                ReferenceItem(
-                    dump=self,
-                    segment=segment,
-                    reference=reference,
-                    direction=DumpReferenceDirection.REVERSE,
-                    source=source,
-                )
-            )
-
-        await wait_success(asyncio.create_task(item()) for item in items)
+    def start_task(self, fn):
+        self.queue.add(asyncio.create_task(self._wrap(fn)))
 
 
 @dataclasses.dataclass
-class RootItem:
-    table: Table
-    condition: str
-    dump: _Dump
-
-    async def __call__(self):
-        task: asyncio.Task = None
-
-        try:
-            async with self.dump.lock:
-                async with self.dump.conn_factory() as conn:
-                    segment = await _discover_table_condition(
-                        conn, self.table, self.condition, self.dump.result
-                    )
-                    if segment is None:
-                        return
-
-                task = asyncio.create_task(self.dump.next(segment, []))
-
-                await self.dump.dump_segment(self.table, segment)
-        except:
-            if task is not None:
-                task.cancel()
-                asyncio.wait([task])
-            raise
-
-        if task is not None:
-            await task
-
-
-@dataclasses.dataclass
-class ReferenceItem:
-    direction: DumpReferenceDirection
-    reference: Reference
-    segment: TableSegment
-    dump: _Dump
-    source: typing.List[TableSegment]
-
-    async def __call__(self):
-        task: asyncio.Task = None
-
-        try:
-            async with self.dump.lock:
-                async with self.dump.conn_factory() as conn:
-                    segment = await _discover_reference(
-                        conn,
-                        self.reference,
-                        self.direction,
-                        self.segment,
-                        self.source,
-                        self.dump.result,
-                    )
-                    if segment is None:
-                        return
-
-                if self.direction == DumpReferenceDirection.FORWARD:
-                    to_table = self.reference.reference_table
-                elif self.direction == DumpReferenceDirection.REVERSE:
-                    to_table = self.reference.table
-
-                task = asyncio.create_task(
-                    self.dump.next(segment, self.source, reference_item=self)
-                )
-
-                await self.dump.dump_segment(to_table, segment)
-        except:
-            if task is not None:
-                task.cancel()
-                asyncio.wait([task])
-            raise
-
-        if task is not None:
-            await task
-
-
-@dataclasses.dataclass
-class SchemaItem:
+class _SchemaTask:
     section: str
     output: _SliceOutput
 
@@ -558,13 +424,6 @@ class Reference:
     reference_columns: typing.List[str]
 
 
-@dataclasses.dataclass
-class TableSegment:
-    index: int
-    row_ids: typing.Any
-    table: Table
-
-
 class Schema:
     """
     Graph model of schema
@@ -623,131 +482,8 @@ class Schema:
         return self._tables.values()
 
 
-async def _dump_data(
-    conn: asyncpg.Connection, table: Table, ids: typing.List[int], out: typing.BinaryIO
-):
-    """
-    Dump data
-    """
-
-    logging.log(TRACE, f"Dumping %s rows from table %s", len(ids), table.id)
-    start = time.perf_counter()
-
-    await conn.execute("CREATE TEMP TABLE _slicedb (_ctid tid) ON COMMIT DROP")
-    await conn.copy_records_to_table(
-        "_slicedb", records=[[int_to_tid(id)] for id in ids], schema_name="pg_temp"
-    )
-    query = f"SELECT {sql_list(table.columns_sql)} FROM {table.sql} AS t JOIN _slicedb AS s ON t.ctid = s._ctid"
-    await conn.copy_from_query(query, output=functools.partial(to_thread, out.write))
-    await conn.execute("DROP TABLE pg_temp._slicedb")
-    end = time.perf_counter()
-    logging.debug(
-        f"Dumped %s rows from table %s (%.3fs)", len(ids), table.id, end - start
-    )
-
-
-async def _discover_table_condition(
-    conn: asyncpg.Connection, table: Table, condition: str, result: _DiscoveryResult
-) -> typing.List[Tid]:
-    """
-    Discover, using root
-    """
-    logging.log(TRACE, f"Finding rows from table %s", table.id)
-    start = time.perf_counter()
-    query = f"SELECT ctid FROM {table.sql} WHERE {condition}"
-    found_ids = [tid_to_int(id_) for id_, in await conn.fetch(query)]
-    segment = result.add(table, found_ids, []) if found_ids else None
-    end = time.perf_counter()
-    if segment is None:
-        logging.debug(
-            f"Found no rows in table %s (%.3fs)",
-            len(found_ids),
-            table.id,
-            end - start,
-        )
-    else:
-        logging.debug(
-            f"Found %s rows (%s new) as %s/%s (%.3fs)",
-            len(found_ids),
-            len(segment.row_ids),
-            segment.table.id,
-            segment.index,
-            end - start,
-        )
-    end = time.perf_counter()
-    return segment
-
-
-async def _discover_reference(
-    conn: asyncpg.Connection,
-    reference: Reference,
-    direction: DumpReferenceDirection,
-    segment: TableSegment,
-    source: typing.List[TableSegment],
-    result,
-) -> typing.List[Tid]:
-    """
-    Discover, using reference
-    """
-    if direction == DumpReferenceDirection.FORWARD:
-        from_columns = reference.columns
-        from_table = reference.table
-        to_columns = reference.reference_columns
-        to_table = reference.reference_table
-    elif direction == DumpReferenceDirection.REVERSE:
-        from_columns = reference.reference_columns
-        from_table = reference.reference_table
-        to_columns = reference.columns
-        to_table = reference.table
-
-    logging.log(
-        TRACE,
-        f"Finding rows from table %s using %s/%s via %s",
-        to_table.id,
-        segment.table.id,
-        segment.index,
-        reference.id,
-    )
-    start = time.perf_counter()
-    from_expr = sql_list([SqlObject(SqlId("a"), SqlId(name)) for name in from_columns])
-    to_expr = sql_list([SqlObject(SqlId("b"), SqlId(name)) for name in to_columns])
-    # assumption: add reference has a unique value on the reference table
-    # therefore, no need to dedup child records since they will be had by only one parent
-    distinct = "DISTINCT" if direction == DumpReferenceDirection.FORWARD else ""
-    query = f"""
-        SELECT {distinct} b.ctid
-        FROM {from_table.sql} AS a
-            JOIN {to_table.sql} AS b ON ({from_expr}) = ({to_expr})
-        WHERE a.ctid = ANY($1::tid[])
-    """
-    tids = [int_to_tid(id) for id in segment.row_ids]
-    found_ids = [tid_to_int(id_) for id_, in await conn.fetch(query, [tids])]
-
-    new_segment = (
-        result.add(to_table, found_ids, source + [segment]) if found_ids else None
-    )
-    end = time.perf_counter()
-    if new_segment is None:
-        logging.debug(
-            f"Found %s rows (no new) in table %s using %s/%s via %s (%.3fs)",
-            len(found_ids),
-            to_table.id,
-            segment.table.id,
-            segment.index,
-            reference.id,
-            end - start,
-        )
-    else:
-        logging.debug(
-            f"Found %s rows (%s new) as %s/%s using %s/%s via %s (%.3fs)",
-            len(found_ids),
-            len(new_segment.row_ids),
-            new_segment.table.id,
-            new_segment.index,
-            segment.table.id,
-            segment.index,
-            reference.id,
-            end - start,
-        )
-
-    return new_segment
+@dataclasses.dataclass
+class TableSegment:
+    index: int
+    row_ids: numpy.ndarray
+    table: Table

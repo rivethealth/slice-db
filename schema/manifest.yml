@@ -37,11 +37,6 @@ definitions:
         minimum: 0
         title: Row count
         type: integer
-      source:
-        description: Source
-        item: { $ref: "#/definitions/tableSegmentId" }
-        title: Source
-        type: array
     required: [properties]
     title: Table segment
     type: object

@@ -138,6 +138,14 @@ def add_dump_command(subparsers):
     parser_required.add_argument(
         "-s", "--schema", required=True, help="Path to schema, or - for stdin."
     )
+    parser.add_argument(
+        "--temp-tables",
+        "--no-table-tables",
+        action=NegateAction,
+        nargs=0,
+        default=True,
+        help="Whether temporary tables can be used.",
+    )
 
 
 def add_restore_command(subparsers):
