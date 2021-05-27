@@ -139,6 +139,7 @@ async def _dump_data(conn: asyncpg.Connection, table: Table, ids, out: typing.Bi
             JOIN pg_temp._slice_db AS i ON t.ctid = i.tid
     """
     await conn.copy_from_query(query, output=functools.partial(to_thread, out.write))
+    await conn.execute("ANALYZE pg_temp._slice_db")
     end = time.perf_counter()
     logging.debug(
         f"Dumped %s rows from table %s (%.3fs)", len(ids), table.id, end - start
