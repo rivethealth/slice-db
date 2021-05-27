@@ -14,24 +14,33 @@ class Queue:
         self._futures = set()
         self._future = asyncio.Future()
 
+    def _cancel(self):
+        if self._exception is not None:
+            for future in self._futures:
+                future.cancel()
+
     def _done(self, future: asyncio.Future):
         self._futures.remove(future)
         if self._exception is None:
-            self._exception = future.exception()
-            if self._exception is not None:
-                for task in self.tasks:
-                    task.cancel()
-        if self._futures:
-            return
-
-        if self._exception is None:
+            try:
+                self._exception = future.exception()
+            except asyncio.CancelledError:
+                pass
+            else:
+                self._cancel()
+        if not self._futures:
             self._future.set_result(None)
-        else:
-            self._future.set_exception(self._exception)
 
     def add(self, future: asyncio.Future):
         self._futures.add(future)
         future.add_done_callback(self._done)
 
     async def finished(self):
-        await self._future
+        while self._futures:
+            self._future = asyncio.Future()
+            try:
+                await self._future
+            except asyncio.CancelledError:
+                self._cancel()
+        if self._exception is not None:
+            raise self._exception
