@@ -139,7 +139,6 @@ async def _dump_data(conn: asyncpg.Connection, table: Table, ids, out: typing.Bi
             JOIN pg_temp._slice_db AS i ON t.ctid = i.tid
     """
     await conn.copy_from_query(query, output=functools.partial(to_thread, out.write))
-    await conn.execute("ANALYZE pg_temp._slice_db")
     end = time.perf_counter()
     logging.debug(
         f"Dumped %s rows from table %s (%.3fs)", len(ids), table.id, end - start
@@ -194,6 +193,7 @@ async def _prepare_discover_reference(conn: asyncpg.Connection, segment: TableSe
     await conn.copy_records_to_table(
         "_slice_db", records=((i,) for i in segment.row_ids), schema_name="pg_temp"
     )
+    await conn.execute("ANALYZE pg_temp._slice_db")
 
 
 async def _discover_reference(
