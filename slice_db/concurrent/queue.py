@@ -15,19 +15,19 @@ class Queue:
         self._future = asyncio.Future()
 
     def _cancel(self):
-        if self._exception is not None:
-            for future in self._futures:
-                future.cancel()
+        for future in self._futures:
+            future.cancel()
 
     def _done(self, future: asyncio.Future):
+        try:
+            exception = future.exception()
+        except asyncio.CancelledError as e:
+            exception = e
+        if exception is not None and self._exception is None:
+            self._exception = exception
+            self._cancel()
+
         self._futures.remove(future)
-        if self._exception is None:
-            try:
-                self._exception = future.exception()
-            except asyncio.CancelledError:
-                pass
-            else:
-                self._cancel()
         if not self._futures:
             self._future.set_result(None)
 
@@ -40,7 +40,8 @@ class Queue:
             self._future = asyncio.Future()
             try:
                 await self._future
-            except asyncio.CancelledError:
+            except asyncio.CancelledError as e:
+                self._exception = e
                 self._cancel()
         if self._exception is not None:
             raise self._exception
