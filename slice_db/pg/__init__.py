@@ -11,7 +11,7 @@ Snapshot = str
 
 def server_settings():
     application_name = os.environ.get("PGAPPNAME", "slice_db")
-    server_settings = {"application_name": application_name}
+    return {"application_name": application_name}
 
 
 @contextlib.asynccontextmanager
