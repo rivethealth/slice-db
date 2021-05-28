@@ -25,14 +25,15 @@ async def dump_main(args):
     else:
         pepper = secrets.token_bytes(8)
 
-    async with asyncpg.create_pool(
+    pool = await asyncpg.create_pool(
         init=_init_connection,
         max_inactive_connection_lifetime=10,
         max_size=args.jobs + 1,
         min_size=0,
         statement_cache_size=0,
         server_settings=server_settings(),
-    ) as pool:
+    )
+    try:
         io = DumpIo(
             conn=lambda: pool.acquire(),
             output=lambda: open_bytes_write(args.output),
@@ -52,6 +53,11 @@ async def dump_main(args):
         )
 
         await dump(roots, io, params)
+    finally:
+        try:
+            await asyncio.wait_for(pool.close(), 10)
+        except asyncio.TimeoutError:
+            logging.error("Pool failed to close within 10s")
 
 
 async def _init_connection(conn):
