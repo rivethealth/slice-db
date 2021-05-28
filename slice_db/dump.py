@@ -25,6 +25,7 @@ from .formats.dump import (
     DumpReferenceDirection,
     DumpRoot,
     DumpSchema,
+    DumpTable,
 )
 from .formats.manifest import (
     MANIFEST_DATA_JSON_FORMAT,
@@ -117,6 +118,8 @@ async def dump(
             # https://github.com/MagicStack/asyncpg/issues/743
             # readonly=True
         ):
+            row_counts = await _set_row_counts(conn, list(schema.tables()))
+
             if params.parallelism == 1 and not params.strategy.new_transactions:
 
                 @contextlib.asynccontextmanager
@@ -397,6 +400,8 @@ class Table:
     """References to parent tables"""
     reverse_references: typing.List[Reference]
     """References to child tables"""
+    row_count: int
+    """Estimated number of total rows"""
 
     @property
     def columns_sql(self):
@@ -438,6 +443,7 @@ class Schema:
                 id=id,
                 name=table_config.name,
                 reverse_references=[],
+                row_count=0,
                 schema=table_config.schema,
             )
             self._tables[table.id] = table
@@ -487,3 +493,15 @@ class TableSegment:
     index: int
     row_ids: numpy.ndarray
     table: Table
+
+
+async def _set_row_counts(conn: asyncpg.Connection, tables: typing.List[Table]):
+    query = """
+        SELECT reltuples
+        FROM unnest($1::regclass[]) WITH ORDINALITY AS i (oid, ordinality)
+            JOIN pg_class AS pc ON i.oid = pc.oid
+        ORDER BY i.ordinality
+    """
+    result = await conn.fetch(query, [str(table.sql) for table in tables])
+    for row, table in zip(result, tables):
+        table.row_count = int(row["reltuples"])

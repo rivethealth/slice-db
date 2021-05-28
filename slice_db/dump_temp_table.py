@@ -98,11 +98,17 @@ class _TableTask:
             async with self.dump.conn_factory() as conn:
                 await _prepare_discover_reference(conn, self.segment)
 
-                for reference in self.segment.table.references:
+                for reference in sorted(
+                    self.segment.table.references,
+                    key=lambda r: r.reference_table.row_count,
+                ):
                     await self._process_reference(
                         conn, reference, DumpReferenceDirection.FORWARD
                     )
-                for reference in self.segment.table.reverse_references:
+                for reference in sorted(
+                    self.segment.table.reverse_references,
+                    key=lambda r: r.table.row_count,
+                ):
                     await self._process_reference(
                         conn, reference, DumpReferenceDirection.REVERSE
                     )
