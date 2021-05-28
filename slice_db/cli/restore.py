@@ -19,6 +19,7 @@ async def restore_main(args):
         max_size=args.jobs,
         max_inactive_connection_lifetime=10,
         server_settings=server_settings(),
+        statement_cache_size=0,
     ) as pool:
         io = RestoreIo(
             conn=lambda: pool.acquire(), input=lambda: open_bytes_read(args.input)

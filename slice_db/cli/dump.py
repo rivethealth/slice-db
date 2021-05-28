@@ -30,6 +30,7 @@ async def dump_main(args):
         max_inactive_connection_lifetime=10,
         max_size=args.jobs + 1,
         min_size=0,
+        statement_cache_size=0,
         server_settings=server_settings(),
     ) as pool:
         io = DumpIo(
