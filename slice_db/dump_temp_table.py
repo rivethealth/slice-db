@@ -140,9 +140,8 @@ async def _dump_data(conn: asyncpg.Connection, table: Table, ids, out: typing.Bi
     start = time.perf_counter()
     query = f"""
         SELECT {sql_list(table.columns_sql)}
-        FROM
-            {table.sql} AS t
-            JOIN pg_temp._slice_db AS i ON t.ctid = i.tid
+        FROM {table.sql}
+        WHERE ctid = ANY(ARRAY(SELECT tid FROM pg_temp._slice_db))
     """
     await conn.copy_from_query(query, output=functools.partial(to_thread, out.write))
     end = time.perf_counter()
@@ -243,7 +242,7 @@ async def _discover_reference(
         SELECT {distinct} b.ctid
         FROM {from_table.sql} AS a
             JOIN {to_table.sql} AS b ON ({from_expr}) = ({to_expr})
-            JOIN pg_temp._slice_db AS i ON a.ctid = i.tid
+        WHERE a.ctid = ANY(ARRAY(SELECT tid FROM pg_temp._slice_db))
     """
     found_ids = [id_ for id_, in await conn.fetch(query)]
 
