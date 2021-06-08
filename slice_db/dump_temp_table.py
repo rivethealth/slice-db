@@ -16,6 +16,8 @@ from .dump import Dump, DumpReferenceDirection, DumpStrategy, Table, TableSegmen
 from .log import TRACE
 from .transform import TableTransformer
 
+MAX_SIZE = 1000 * 100
+
 
 class TempTableStrategy(DumpStrategy):
     @property
@@ -74,7 +76,7 @@ class _TableTask:
             ):
                 return
 
-        segment = await _discover_reference(
+        segments = await _discover_reference(
             conn,
             self.segment,
             reference,
@@ -82,16 +84,14 @@ class _TableTask:
             self.dump.result,
         )
 
-        if segment is None:
-            return
-
-        task = _TableTask(
-            dump=self.dump,
-            segment=segment,
-            source_direction=direction,
-            source_reference=reference,
-        )
-        self.dump.start_task(task())
+        for segment in segments:
+            task = _TableTask(
+                dump=self.dump,
+                segment=segment,
+                source_direction=direction,
+                source_reference=reference,
+            )
+            self.dump.start_task(task())
 
     async def __call__(self):
         with tempfile.TemporaryFile() as tmp:
@@ -246,9 +246,15 @@ async def _discover_reference(
     """
     found_ids = [id_ for id_, in await conn.fetch(query)]
 
-    new_segment = result.add(to_table, found_ids) if found_ids else None
+    new_segments = []
+    for i in range(0, len(found_ids), MAX_SIZE):
+        await asyncio.sleep(0)
+        new_segment = result.add(to_table, found_ids[i : i + MAX_SIZE])
+        if new_segment is not None:
+            new_segments.append(new_segment)
+
     end = time.perf_counter()
-    if new_segment is None:
+    if not new_segments:
         logging.debug(
             f"Found %s rows (no new) in table %s using %s/%s via %s (%.3fs)",
             len(found_ids),
@@ -262,13 +268,13 @@ async def _discover_reference(
         logging.debug(
             f"Found %s rows (%s new) as %s/%s using %s/%s via %s (%.3fs)",
             len(found_ids),
-            len(new_segment.row_ids),
-            new_segment.table.id,
-            new_segment.index,
+            sum(len(segment.row_ids) for segment in new_segments),
+            to_table.id,
+            ",".join(str(segment.index) for segment in new_segments),
             segment.table.id,
             segment.index,
             reference.id,
             end - start,
         )
 
-    return new_segment
+    return new_segments
