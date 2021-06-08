@@ -8,6 +8,13 @@ from ..json import DataJsonFormat, package_json_format
 
 @dataclasses_json.dataclass_json(letter_case=dataclasses_json.LetterCase.CAMEL)
 @dataclasses.dataclass()
+class ManifestSequence:
+    name: str
+    schema: str
+
+
+@dataclasses_json.dataclass_json(letter_case=dataclasses_json.LetterCase.CAMEL)
+@dataclasses.dataclass()
 class ManifestTableSegmentId:
     table_id: str
     index: int
@@ -36,6 +43,7 @@ class ManifestTable:
 @dataclasses_json.dataclass_json(letter_case=dataclasses_json.LetterCase.CAMEL)
 @dataclasses.dataclass()
 class Manifest:
+    sequences: typing.Dict[str, ManifestSequence]
     tables: typing.Dict[str, ManifestTable]
 
 

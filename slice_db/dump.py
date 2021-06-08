@@ -30,6 +30,7 @@ from .formats.dump import (
 from .formats.manifest import (
     MANIFEST_DATA_JSON_FORMAT,
     Manifest,
+    ManifestSequence,
     ManifestTable,
     ManifestTableSegment,
 )
@@ -154,8 +155,14 @@ async def dump(
                 transformers=transformers,
             )
 
+            await _dump_sequences(
+                conn_factory=conn_factory, result=result, output=output, schema=schema
+            )
+
         if params.output_type == OutputType.SLICE:
-            manifest = Manifest(tables=result.table_manifests())
+            manifest = Manifest(
+                sequences=result.sequence_manifests(), tables=result.table_manifests()
+            )
             MANIFEST_DATA_JSON_FORMAT.dump(slice_writer.open_manifest, manifest)
         elif params.output_type == OutputType.SQL:
             if params.include_schema:
@@ -166,7 +173,7 @@ async def dump(
 async def _dump_rows(
     conn_factory: ResourceFactory[asyncpg.Connection],
     include_schema: bool,
-    output: typing.Union[_SliceOutput, _SqlOutput],
+    output: _Output,
     parallelism: int,
     pepper: bytes,
     result,
@@ -213,7 +220,51 @@ async def _dump_rows(
         logging.info("Dumped %d total rows (%.3fs)", result.row_count, end - start)
 
 
-class _SliceOutput:
+async def _dump_sequences(
+    conn_factory: ResourceFactory[asyncpg.Connection],
+    result: _DiscoveryResult,
+    output: _Output,
+    schema: Schema,
+):
+    sequence_ids = set()
+    for table_id in result.table_manifests().keys():
+        for sequence in schema.get_table(table_id).sequences:
+            sequence_ids.add(sequence.id)
+
+    if not sequence_ids:
+        return
+
+    async with conn_factory() as conn:
+        logging.log(TRACE, "Dumping %s sequences", len(sequence_ids))
+        start = time.perf_counter()
+
+        for sequence_id in sequence_ids:
+            sequence = schema.get_sequence(sequence_id)
+            result.add_sequence(sequence)
+            row = await conn.fetchrow(
+                f"""
+                SELECT last_value
+                FROM {sequence.sql}
+                """,
+            )
+            output.write_sequence(sequence, row["last_value"])
+
+        end = time.perf_counter()
+        logging.debug("Dumped %s sequences (%.3fs)", len(sequence_ids))
+
+
+class _Output(typing.Protocol):
+    async def open_schema(self, section: str) -> typing.BinaryIO:
+        pass
+
+    async def open_segment(self, segment: TableSegment) -> typing.BinaryIO:
+        pass
+
+    def write_sequence(self, sequence: Sequence, value: int):
+        pass
+
+
+class _SliceOutput(_Output):
     """
     Concurrency-safe slice output
     """
@@ -240,8 +291,11 @@ class _SliceOutput:
             with self._writer.open_segment(segment.table.id, segment.index) as f:
                 yield f
 
+    def write_sequence(self, sequence: Sequence, value: int):
+        self._writer.write_sequence(sequence.id, value)
 
-class _SqlOutput:
+
+class _SqlOutput(_Output):
     """
     Concurrency-safe SQL output
     """
@@ -264,6 +318,9 @@ class _SqlOutput:
                 segment.table.columns,
             ) as f:
                 yield f
+
+    def write_sequence(self, sequence: Sequence, value: int):
+        self._writer.write_sequence(sequence.id, sequence.schema, sequence.name, value)
 
 
 async def _pg_dump_section(section: str, out: typing.BinaryIO) -> str:
@@ -291,11 +348,13 @@ class _DiscoveryResult:
     """
 
     _row_ids: typing.DefaultDict[str, IntSet]
+    _sequence_manifests: typing.Dict[str, ManifestSequence]
     _table_manifests: typing.Dict[str, ManifestTable]
 
     def __init__(self):
         self._id_count = 0
         self._row_ids = collections.defaultdict(lambda: IntSet(numpy.int64))
+        self._sequence_manifests = {}
         self._table_manifests = {}
 
     def add(
@@ -329,12 +388,23 @@ class _DiscoveryResult:
 
         return segment
 
+    def add_sequence(self, sequence: Sequence):
+        self._sequence_manifests[sequence.id] = ManifestSequence(
+            name=sequence.name, schema=sequence.schema
+        )
+
     @property
     def row_count(self):
         """
         Total rows
         """
         return self._id_count
+
+    def sequence_manifests(self):
+        """
+        Dict of ManifestSequences
+        """
+        return self._sequence_manifests
 
     def table_manifests(self):
         """
@@ -385,6 +455,19 @@ class Root:
 
 
 @dataclasses.dataclass
+class Sequence:
+    """Sequence"""
+
+    id: str
+    schema: str
+    name: str
+
+    @property
+    def sql(self):
+        return SqlObject(SqlId(self.schema), SqlId(self.name))
+
+
+@dataclasses.dataclass
 class Table:
     """Table"""
 
@@ -402,6 +485,8 @@ class Table:
     """References to child tables"""
     row_count: int
     """Estimated number of total rows"""
+    sequences: typing.List[Sequence]
+    """Sequences"""
 
     @property
     def columns_sql(self):
@@ -435,6 +520,10 @@ class Schema:
     """
 
     def __init__(self, schema: DumpSchema):
+        self._sequences = {}
+        for id, sequence in schema.sequences.items():
+            self._sequences[id] = Sequence(id, sequence.schema, sequence.name)
+
         self._tables = {}
         for id, table_config in schema.tables.items():
             table = Table(
@@ -445,6 +534,7 @@ class Schema:
                 reverse_references=[],
                 row_count=0,
                 schema=table_config.schema,
+                sequences=[self._sequences[id] for id in table_config.sequences],
             )
             self._tables[table.id] = table
 
@@ -474,6 +564,9 @@ class Schema:
             self._references[id] = reference
             table.references.append(reference)
             reference_table.reverse_references.append(reference)
+
+    def get_sequence(self, id: str) -> Sequence:
+        return self._sequences[id]
 
     def get_table(self, id) -> Table:
         """

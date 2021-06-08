@@ -15,6 +15,10 @@ _UTF8_READER: codecs.StreamWriter = codecs.getreader("utf-8")
 _UTF8_WRITER: codecs.StreamWriter = codecs.getwriter("utf-8")
 
 
+def _sequence_path(seq_id: str) -> str:
+    return f"{seq_id}.text"
+
+
 def _segment_path(table_id: str, index: int) -> str:
     return f"{table_id}/{index + 1}.tsv"
 
@@ -52,6 +56,11 @@ class SliceReader:
         """
         return self._zip.open(_segment_path(table_id, index))
 
+    def read_sequence(self, id: str):
+        with self._zip.open(_sequence_path(id), "r") as f:
+            reader = _UTF8_READER(f)
+            return int(f.read())
+
 
 class SliceWriter:
     """
@@ -85,3 +94,8 @@ class SliceWriter:
         Open segment
         """
         return self._zip.open(_segment_path(table_id, index), "w", force_zip64=True)
+
+    def write_sequence(self, id: str, value: int):
+        with self._zip.open(_sequence_path(id), "w") as f:
+            writer = _UTF8_WRITER(f)
+            writer.write(str(value))

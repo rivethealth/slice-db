@@ -37,9 +37,21 @@ definitions:
     description: Direction of reference
     choices: [forward, reverse]
     type: string
+  sequence:
+    description: Sequence.
+    properties:
+      name:
+        description: Name of sequence.
+        title: Name
+        type: string
+      schema:
+        description: Name of schema.
+        title: Schema
+        type: string
+    required: [schema, name]
+    title: Sequence
   table:
     description: Table
-    required: [columns, name]
     properties:
       name:
         description: Name
@@ -51,6 +63,12 @@ definitions:
         default: null
         description: Schema name. If null, uses the usual schema search path.
         type: ["null", string]
+      sequences:
+        description: Sequence IDs that this table depends on.
+        item: { type: string }
+        title: Sequences
+        type: array
+    required: [columns, name, sequences]
     type: object
 properties:
   references:
@@ -58,10 +76,15 @@ properties:
     description: References
     title: References
     type: object
+  sequences:
+    additionalProperties: { $ref: "#/definitions/sequence" }
+    description: Sequences.
+    title: Sequences
+    type: object
   tables:
     additionalProperties: { $ref: "#/definitions/table" }
     description: Tables
     title: Tables
     type: object
-required: [references, tables]
+required: [references, sequences, tables]
 type: object

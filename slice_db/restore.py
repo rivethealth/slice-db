@@ -8,7 +8,7 @@ import time
 import typing
 
 import asyncpg
-import pg_sql
+from pg_sql import SqlId, SqlNumber, SqlObject, SqlString
 
 from .collection.dict import groups
 from .concurrent import to_thread, wait_success
@@ -72,6 +72,12 @@ async def restore(io, params):
                 async with conn_factory() as conn:
                     await conn.execute(schema_sql)
 
+            await _restore_sequences(
+                conn_factory=conn_factory,
+                manifest=manifest,
+                reader=reader,
+            )
+
             await _restore_rows(
                 conn_factory=conn_factory,
                 include_schema=params.include_schema,
@@ -85,6 +91,24 @@ async def restore(io, params):
                     schema_sql = f.read().decode("utf-8")
                 async with conn_factory() as conn:
                     await conn.execute(schema_sql)
+
+
+async def _restore_sequences(
+    conn_factory: AsyncResourceFactory,
+    manifest: Manifest,
+    reader: SliceReader,
+):
+    async with conn_factory() as conn:
+        for id, sequence in manifest.sequences.items():
+            value = SqlNumber(reader.read_sequence(id))
+            seq = SqlObject(SqlId(sequence.schema), SqlId(sequence.name))
+            await conn.execute(
+                f"""
+                SELECT setval({SqlString(str(seq))}, {SqlNumber(value)})
+                FROM {seq}
+                WHERE last_value < {value}
+                """
+            )
 
 
 async def _restore_rows(
@@ -101,9 +125,7 @@ async def _restore_rows(
             constraints = await get_constaints(conn, manifest.tables)
 
             deferrable_constaints = [
-                pg_sql.SqlObject(
-                    pg_sql.SqlId(constraint.schema), pg_sql.SqlId(constraint.name)
-                )
+                SqlObject(SqlId(constraint.schema), SqlId(constraint.name))
                 for constraint in constraints
                 if constraint.deferrable
             ]

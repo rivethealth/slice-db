@@ -5,6 +5,15 @@ definitions:
     description: Name of column
     type: string
     title: Column
+  sequence:
+    description: Sequence.
+    properties:
+      name:
+        type: string
+      schema:
+        type: string
+    title: Sequence
+    type: object
   table:
     description: Table manifest
     properties:
@@ -55,6 +64,11 @@ definitions:
     title: Table segment ID
 description: Snapshot manifest
 properties:
+  sequences:
+    additionalProperties: { $ref: "#/definitions/sequence" }
+    description: Sequences
+    title: Sequences
+    type: object
   tables:
     additionalProperties: { $ref: "#/definitions/table" }
     description: Tables

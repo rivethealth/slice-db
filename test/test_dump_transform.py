@@ -27,16 +27,19 @@ _SCHEMA_JSON = {
             "table": "public.child",
         }
     },
+    "sequences": {},
     "tables": {
         "public.parent": {
             "columns": ["id"],
             "name": "parent",
             "schema": "public",
+            "sequences": [],
         },
         "public.child": {
             "columns": ["id", "parent_id", "name"],
             "name": "child",
             "schema": "public",
+            "sequences": [],
         },
     },
 }

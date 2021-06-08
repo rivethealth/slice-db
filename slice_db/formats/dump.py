@@ -34,10 +34,21 @@ class DumpReference:
     undefined=dataclasses_json.Undefined.EXCLUDE,
 )
 @dataclasses.dataclass
+class DumpSequence:
+    schema: str
+    name: str
+
+
+@dataclasses_json.dataclass_json(
+    letter_case=dataclasses_json.LetterCase.CAMEL,
+    undefined=dataclasses_json.Undefined.EXCLUDE,
+)
+@dataclasses.dataclass
 class DumpTable:
     columns: typing.List[str]
     name: str
     schema: typing.Optional[str]
+    sequences: typing.List[str]
 
 
 @dataclasses_json.dataclass_json(
@@ -47,6 +58,7 @@ class DumpTable:
 @dataclasses.dataclass
 class DumpSchema:
     references: typing.Dict[str, DumpReference]
+    sequences: typing.Dict[str, DumpSequence]
     tables: typing.Dict[str, DumpTable]
 
 

@@ -43,16 +43,19 @@ def test_dump_sql(pg_database, snapshot):
                         "table": "public.child",
                     }
                 },
+                "sequences": {},
                 "tables": {
                     "public.parent": {
                         "columns": ["id"],
                         "name": "parent",
                         "schema": "public",
+                        "sequences": [],
                     },
                     "public.child": {
                         "columns": ["id", "parent_id"],
                         "name": "child",
                         "schema": "public",
+                        "sequences": [],
                     },
                 },
             }

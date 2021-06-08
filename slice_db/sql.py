@@ -2,7 +2,7 @@ import codecs
 import contextlib
 import typing
 
-from pg_sql import SqlId, SqlObject, sql_list
+from pg_sql import SqlId, SqlNumber, SqlObject, SqlString, sql_list
 
 _UTF_8_WRITER = codecs.getwriter("utf-8")
 
@@ -33,3 +33,15 @@ class SqlWriter:
         yield self._file
 
         text_writer.write("\\.\n\n\n")
+
+    def write_sequence(self, id: str, schema: str, name: str, value: int):
+        text_writer = _UTF_8_WRITER(self._file)
+
+        text_writer.write(f"--\n-- Sequence {id}\n--\n")
+
+        seq_name = SqlObject(SqlId(schema), SqlId(name))
+        seq_value = SqlNumber(value)
+        query = f"SELECT setval({SqlString(str(seq_name))}, {seq_value}) FROM {seq_name} WHERE last_value < {seq_value};\n"
+        text_writer.write(query)
+
+        text_writer.write("\n")

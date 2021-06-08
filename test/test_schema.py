@@ -11,11 +11,11 @@ def test_schema(pg_database, snapshot):
         cur.execute(
             """
                     CREATE TABLE parent (
-                        id int PRIMARY KEY
+                        id serial PRIMARY KEY
                     );
 
                     CREATE TABLE child (
-                        id int PRIMARY KEY,
+                        id serial PRIMARY KEY,
                         parent_id int REFERENCES parent (id)
                     );
                 """

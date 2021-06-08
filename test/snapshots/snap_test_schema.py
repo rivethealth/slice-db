@@ -15,12 +15,22 @@ snapshots["test_schema 1"] = {
             "table": "public.child",
         }
     },
+    "sequences": {
+        "public.child_id_seq": {"name": "child_id_seq", "schema": "public"},
+        "public.parent_id_seq": {"name": "parent_id_seq", "schema": "public"},
+    },
     "tables": {
         "public.child": {
             "columns": ["id", "parent_id"],
             "name": "child",
             "schema": "public",
+            "sequences": ["public.child_id_seq"],
         },
-        "public.parent": {"columns": ["id"], "name": "parent", "schema": "public"},
+        "public.parent": {
+            "columns": ["id"],
+            "name": "parent",
+            "schema": "public",
+            "sequences": ["public.parent_id_seq"],
+        },
     },
 }

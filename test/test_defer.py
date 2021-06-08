@@ -22,11 +22,13 @@ _SCHEMA_JSON = {
             "table": "public.directory",
         }
     },
+    "sequences": {},
     "tables": {
         "public.directory": {
             "columns": ["id", "parent_id"],
             "name": "directory",
             "schema": "public",
+            "sequences": [],
         },
     },
 }

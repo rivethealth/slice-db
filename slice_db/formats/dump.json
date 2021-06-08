@@ -51,6 +51,18 @@
       "choices": ["forward", "reverse"],
       "type": "string"
     },
+    "sequence": {
+      "description": "Sequence.",
+      "properties": {
+        "schema": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "title": "Sequence"
+    },
     "table": {
       "description": "Table",
       "required": ["columns", "name"],
@@ -69,6 +81,14 @@
           "default": null,
           "description": "Schema name. If null, uses the usual schema search path.",
           "type": ["null", "string"]
+        },
+        "sequences": {
+          "description": "Sequence IDs that this table depends on.",
+          "item": {
+            "type": "string"
+          },
+          "title": "Sequences",
+          "type": "array"
         }
       },
       "type": "object"
@@ -81,6 +101,14 @@
       },
       "description": "References",
       "title": "References",
+      "type": "object"
+    },
+    "sequences": {
+      "additionalProperties": {
+        "$ref": "#/definitions/sequence"
+      },
+      "description": "Sequences.",
+      "title": "Sequences",
       "type": "object"
     },
     "tables": {

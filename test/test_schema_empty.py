@@ -13,11 +13,13 @@ _SCHEMA_SQL = """
 
 _SCHEMA_JSON = {
     "references": {},
+    "sequences": {},
     "tables": {
         "public.empty": {
             "columns": [],
             "name": "empty",
             "schema": "public",
+            "sequences": [],
         },
     },
 }
