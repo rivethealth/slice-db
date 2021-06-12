@@ -165,7 +165,6 @@ async def _discover_table_condition(
     if segment is None:
         logging.debug(
             f"Found no rows in table %s (%.3fs)",
-            len(found_ids),
             table.id,
             end - start,
         )
