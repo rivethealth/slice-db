@@ -16,7 +16,7 @@ from .dump import Dump, DumpReferenceDirection, DumpStrategy, Table, TableSegmen
 from .log import TRACE
 from .transform import TableTransformer
 
-MAX_SIZE = 1000 * 100
+MAX_SIZE = 1000 * 250
 
 
 class TempTableStrategy(DumpStrategy):
@@ -38,14 +38,13 @@ class _RootTask:
 
     async def __call__(self):
         async with self.dump.conn_factory() as conn:
-            segment = await _discover_table_condition(
+            segments = await _discover_table_condition(
                 conn, self.table, self.condition, self.dump.result
             )
-            if segment is None:
-                return
 
-            task = _TableTask(segment=segment, dump=self.dump)
-            self.dump.start_task(task())
+            for segment in segments:
+                task = _TableTask(segment=segment, dump=self.dump)
+                self.dump.start_task(task())
 
 
 @dataclasses.dataclass
@@ -158,11 +157,24 @@ async def _discover_table_condition(
     """
     logging.log(TRACE, f"Finding rows from table %s", table.id)
     start = time.perf_counter()
-    query = f"SELECT ctid FROM {table.sql} WHERE {condition}"
-    found_ids = [row["ctid"] for row in await conn.fetch(query)]
-    segment = result.add(table, found_ids) if found_ids else None
+
+    query = f"""
+        SELECT ctid
+        FROM {table.sql}
+        WHERE {condition}
+        ORDER BY 1
+    """
+    found_ids = [id_ for id_, in await conn.fetch(query)]
+
+    new_segments = []
+    for i in range(0, len(found_ids), MAX_SIZE):
+        await asyncio.sleep(0)
+        new_segment = result.add(table, found_ids[i : i + MAX_SIZE])
+        if new_segment is not None:
+            new_segments.append(new_segment)
+
     end = time.perf_counter()
-    if segment is None:
+    if not new_segments:
         logging.debug(
             f"Found no rows in table %s (%.3fs)",
             table.id,
@@ -172,13 +184,13 @@ async def _discover_table_condition(
         logging.debug(
             f"Found %s rows (%s new) as %s/%s (%.3fs)",
             len(found_ids),
-            len(segment.row_ids),
-            segment.table.id,
-            segment.index,
+            sum(len(segment.row_ids) for segment in new_segments),
+            table.id,
+            ','.join(str(segment.index) for segment in new_segments),
             end - start,
         )
-    end = time.perf_counter()
-    return segment
+
+    return new_segments
 
 
 async def _prepare_discover_reference(conn: asyncpg.Connection, segment: TableSegment):
@@ -242,6 +254,7 @@ async def _discover_reference(
         FROM {from_table.sql} AS a
             JOIN {to_table.sql} AS b ON ({from_expr}) = ({to_expr})
         WHERE a.ctid = ANY(ARRAY(SELECT tid FROM pg_temp._slice_db))
+        ORDER BY 1
     """
     found_ids = [id_ for id_, in await conn.fetch(query)]
 
