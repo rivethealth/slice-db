@@ -250,7 +250,7 @@ async def _dump_sequences(
             output.write_sequence(sequence, row["last_value"])
 
         end = time.perf_counter()
-        logging.debug("Dumped %s sequences (%.3fs)", len(sequence_ids))
+        logging.debug("Dumped %s sequences (%.3fs)", len(sequence_ids), end - start)
 
 
 class _Output(typing.Protocol):

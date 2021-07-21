@@ -16,7 +16,7 @@ _UTF8_WRITER: codecs.StreamWriter = codecs.getwriter("utf-8")
 
 
 def _sequence_path(seq_id: str) -> str:
-    return f"{seq_id}.text"
+    return f"{seq_id}.txt"
 
 
 def _segment_path(table_id: str, index: int) -> str:
