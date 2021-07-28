@@ -253,7 +253,7 @@ async def _discover_reference(
         SELECT {distinct} b.ctid
         FROM {from_table.sql} AS a
             JOIN {to_table.sql} AS b ON ({from_expr}) = ({to_expr})
-        WHERE a.ctid = ANY(ARRAY(SELECT tid FROM pg_temp._slice_db))
+            JOIN pg_temp._slice_db AS sd ON a.ctid = sd.tid
         ORDER BY 1
     """
     found_ids = [id_ for id_, in await conn.fetch(query)]
