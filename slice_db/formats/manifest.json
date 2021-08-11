@@ -6,6 +6,15 @@
       "type": "string",
       "title": "Column"
     },
+    "schema": {
+      "properties": {
+        "count": {
+          "type": "integer"
+        }
+      },
+      "required": ["count"],
+      "type": "object"
+    },
     "sequence": {
       "description": "Sequence.",
       "properties": {
@@ -87,6 +96,12 @@
   },
   "description": "Snapshot manifest",
   "properties": {
+    "preData": {
+      "$ref": "#/definitions/schema"
+    },
+    "postData": {
+      "$ref": "#/definitions/schema"
+    },
     "sequences": {
       "additionalProperties": {
         "$ref": "#/definitions/sequence"

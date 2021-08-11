@@ -20,6 +20,7 @@ class CopyFormat:
             except ValueError:
                 result += text[i:]
                 break
+            result += text[i:j]
             if text[j + 1] == "\\":
                 result += "\\"
             elif text[j + 1] == "b":
@@ -47,12 +48,12 @@ class CopyFormat:
 
         return (
             field.replace("\\", "\\\\")
-            .replace("\b", r"\\b")
-            .replace("\f", r"\\f")
-            .replace("\n", r"\\n")
-            .replace("\r", r"\\r")
-            .replace("\t", r"\\t")
-            .replace("\v", r"\\t")
+            .replace("\b", "\\b")
+            .replace("\f", "\\f")
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t")
+            .replace("\v", "\\t")
         )
 
     def serialize_raw_row(self, row: RawRow) -> str:

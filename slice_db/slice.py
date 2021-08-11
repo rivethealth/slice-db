@@ -15,6 +15,10 @@ _UTF8_READER: codecs.StreamWriter = codecs.getreader("utf-8")
 _UTF8_WRITER: codecs.StreamWriter = codecs.getwriter("utf-8")
 
 
+def _schema_path(section: str, index: int):
+    return f"{section}/{index + 1}.sql"
+
+
 def _sequence_path(seq_id: str) -> str:
     return f"{seq_id}.txt"
 
@@ -45,8 +49,8 @@ class SliceReader:
         file = self._zip.open(_MANIFEST_PATH)
         return _UTF8_READER(file)
 
-    def open_schema(self, section: str):
-        return self._zip.open(f"{section}.sql")
+    def open_schema(self, section: str, index: int):
+        return self._zip.open(_schema_path(section, index))
 
     def open_segment(
         self, table_id: str, index: int
@@ -84,8 +88,8 @@ class SliceWriter:
         file = self._zip.open(_MANIFEST_PATH, "w")
         return _UTF8_WRITER(file)
 
-    def open_schema(self, section: str):
-        return self._zip.open(f"{section}.sql", "w")
+    def open_schema(self, section: str, index: int):
+        return self._zip.open(_schema_path(section, index), "w")
 
     def open_segment(
         self, table_id: str, index: int

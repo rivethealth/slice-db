@@ -186,7 +186,7 @@ async def _discover_table_condition(
             len(found_ids),
             sum(len(segment.row_ids) for segment in new_segments),
             table.id,
-            ','.join(str(segment.index) for segment in new_segments),
+            ",".join(str(segment.index) for segment in new_segments),
             end - start,
         )
 

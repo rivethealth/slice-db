@@ -30,6 +30,7 @@ from .formats.dump import (
 from .formats.manifest import (
     MANIFEST_DATA_JSON_FORMAT,
     Manifest,
+    ManifestSchema,
     ManifestSequence,
     ManifestTable,
     ManifestTableSegment,
@@ -37,6 +38,7 @@ from .formats.manifest import (
 from .formats.transform import TRANSFORM_DATA_JSON_FORMAT
 from .log import TRACE
 from .pg import export_snapshot, set_snapshot
+from .pg.token import parse_statements
 from .resource import AsyncResourceFactory, ResourceFactory
 from .slice import SliceWriter
 from .sql import SqlWriter
@@ -161,7 +163,10 @@ async def dump(
 
         if params.output_type == OutputType.SLICE:
             manifest = Manifest(
-                sequences=result.sequence_manifests(), tables=result.table_manifests()
+                pre_data=ManifestSchema(count=result.section_counts["pre-data"]),
+                post_data=ManifestSchema(count=result.section_counts["post-data"]),
+                sequences=result.sequence_manifests(),
+                tables=result.table_manifests(),
             )
             MANIFEST_DATA_JSON_FORMAT.dump(slice_writer.open_manifest, manifest)
         elif params.output_type == OutputType.SQL:
@@ -206,8 +211,10 @@ async def _dump_rows(
     strategy.start(dump, roots)
 
     if include_schema:
-        dump.start_task(_SchemaTask(section="pre-data", output=output)())
-        dump.start_task(_SchemaTask(section="post-data", output=output)())
+        dump.start_task(_SchemaTask(section="pre-data", output=output, result=result)())
+        dump.start_task(
+            _SchemaTask(section="post-data", output=output, result=result)()
+        )
 
     await queue.finished()
 
@@ -254,7 +261,7 @@ async def _dump_sequences(
 
 
 class _Output(typing.Protocol):
-    async def open_schema(self, section: str) -> typing.BinaryIO:
+    async def open_schema(self, section: str, index: int) -> typing.BinaryIO:
         pass
 
     async def open_segment(self, segment: TableSegment) -> typing.BinaryIO:
@@ -274,12 +281,12 @@ class _SliceOutput(_Output):
         self._writer = writer
 
     @contextlib.asynccontextmanager
-    async def open_schema(self, section: str):
+    async def open_schema(self, section: str, index: int):
         """
         Open schema for writing
         """
         async with self._lock:
-            with self._writer.open_schema(section) as f:
+            with self._writer.open_schema(section, index) as f:
                 yield f
 
     @contextlib.asynccontextmanager
@@ -329,7 +336,9 @@ async def _pg_dump_section(section: str, out: typing.BinaryIO) -> str:
     process = await asyncio.subprocess.create_subprocess_exec(
         "pg_dump",
         "-B",
+        "--disable-dollar-quoting",
         "--no-acl",
+        "--quote-all-identifiers",
         "--section",
         section,
         stdin=asyncio.subprocess.DEVNULL,
@@ -350,12 +359,14 @@ class _DiscoveryResult:
     _row_ids: typing.DefaultDict[str, IntSet]
     _sequence_manifests: typing.Dict[str, ManifestSequence]
     _table_manifests: typing.Dict[str, ManifestTable]
+    section_counts: typing.DefaultDict[str, int]
 
     def __init__(self):
         self._id_count = 0
         self._row_ids = collections.defaultdict(lambda: IntSet(numpy.int64))
         self._sequence_manifests = {}
         self._table_manifests = {}
+        self.section_counts = collections.defaultdict(lambda: 0)
 
     def add(
         self, table: Table, row_ids: typing.List[int]
@@ -434,14 +445,19 @@ class Dump:
 @dataclasses.dataclass
 class _SchemaTask:
     section: str
+    result: _DiscoveryResult
     output: _SliceOutput
 
     async def __call__(self):
         with tempfile.TemporaryFile() as tmp:
             await _pg_dump_section(self.section, tmp)
             tmp.seek(0)
-            async with self.output.open_schema(self.section) as f:
-                await to_thread(shutil.copyfileobj, tmp, f)
+            text = tmp.read().decode()
+        # last statement is comment-only and messes up asyncpg
+        for i, statement in enumerate(list(parse_statements(text))[:-1]):
+            self.result.section_counts[self.section] += 1
+            async with self.output.open_schema(self.section, i) as f:
+                await to_thread(f.write, statement.encode())
 
 
 @dataclasses.dataclass

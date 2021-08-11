@@ -8,6 +8,12 @@ from ..json import DataJsonFormat, package_json_format
 
 @dataclasses_json.dataclass_json(letter_case=dataclasses_json.LetterCase.CAMEL)
 @dataclasses.dataclass()
+class ManifestSchema:
+    count: int
+
+
+@dataclasses_json.dataclass_json(letter_case=dataclasses_json.LetterCase.CAMEL)
+@dataclasses.dataclass()
 class ManifestSequence:
     name: str
     schema: str
@@ -43,6 +49,8 @@ class ManifestTable:
 @dataclasses_json.dataclass_json(letter_case=dataclasses_json.LetterCase.CAMEL)
 @dataclasses.dataclass()
 class Manifest:
+    post_data: ManifestSchema
+    pre_data: ManifestSchema
     sequences: typing.Dict[str, ManifestSequence]
     tables: typing.Dict[str, ManifestTable]
 
