@@ -3,6 +3,7 @@ import secrets
 
 import asyncpg
 
+from ..common import setup_connection
 from ..dump import DumpIo, DumpParams, OutputType, dump
 from ..dump_temp_table import TempTableStrategy
 from ..formats.dump import DumpRoot
@@ -62,3 +63,4 @@ async def dump_main(args):
 
 async def _init_connection(conn):
     await set_tid_codec(conn)
+    await setup_connection(conn)

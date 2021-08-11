@@ -2,10 +2,10 @@ import contextlib
 
 import asyncpg
 
+from ..common import setup_connection
 from ..pg import server_settings
 from ..restore import RestoreIo, RestoreParams, restore
 from .common import open_bytes_read
-
 
 async def restore_main(args):
     params = RestoreParams(
@@ -15,6 +15,7 @@ async def restore_main(args):
     )
 
     async with asyncpg.create_pool(
+        init=_init_connection,
         min_size=0,
         max_size=args.jobs,
         max_inactive_connection_lifetime=10,
@@ -26,3 +27,6 @@ async def restore_main(args):
         )
 
         await restore(io, params)
+
+async def _init_connection(conn: asyncpg.Connection):
+    await setup_connection(conn)
