@@ -67,11 +67,11 @@ async def restore(io, params):
                         yield conn
 
             if params.include_schema:
-                for i in range(manifest.pre_data.count):
-                    logging.info("Running pre-data %d", i)
-                    with reader.open_schema("pre-data", i) as f:
-                        schema_sql = f.read().decode("utf-8")
-                    async with conn_factory() as conn:
+                async with conn_factory() as conn:
+                    for i in range(manifest.pre_data.count):
+                        logging.info("Running pre-data %d", i)
+                        with reader.open_schema("pre-data", i) as f:
+                            schema_sql = f.read().decode("utf-8")
                         await conn.execute(schema_sql)
 
             await _restore_sequences(
@@ -89,11 +89,11 @@ async def restore(io, params):
             )
 
             if params.include_schema:
-                for i in range(manifest.post_data.count):
-                    logging.info("Running post-data %d", i)
-                    with reader.open_schema("post-data", i) as f:
-                        schema_sql = f.read().decode("utf-8")
-                    async with conn_factory() as conn:
+                async with conn_factory() as conn:
+                    for i in range(manifest.post_data.count):
+                        logging.info("Running post-data %d", i)
+                        with reader.open_schema("post-data", i) as f:
+                            schema_sql = f.read().decode("utf-8")
                         await conn.execute(schema_sql)
 
 
