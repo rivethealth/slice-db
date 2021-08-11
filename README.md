@@ -1,6 +1,10 @@
-# SliceDB
+# Slice DB
 
 [![PyPI](https://img.shields.io/pypi/v/slice-db)](https://pypi.org/project/slice-db/)
+
+<p align="center">
+  <img src="doc/logo.png">
+</p>
 
 ## Overview
 
