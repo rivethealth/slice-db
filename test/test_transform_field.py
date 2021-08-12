@@ -138,9 +138,9 @@ def test_transform_field_given_name_case_insenstive():
             "abc",
             "--transform",
             "given_name",
-            "JANE",
             "--params",
             '{"caseInsensitive":true}',
+            "JANE",
         ]
     )
     assert result.decode("utf-8") == "KIMBERLEY\n"
@@ -153,12 +153,29 @@ def test_transform_field_given_name_case_insenstive():
             "abc",
             "--transform",
             "given_name",
-            "Jane",
             "--params",
             '{"caseInsensitive":true}',
+            "Jane",
         ]
     )
     assert result.decode("utf-8") == "Kimberley\n"
+
+
+def test_transform_field_json():
+    result = run_process(
+        [
+            "slicedb",
+            "transform-field",
+            "--pepper",
+            "abc",
+            "--transform",
+            "json_object",
+            "--params",
+            '{"properties":{"example1":{"type":"json_string", "params":{"type": "alphanumeric"}}}}',
+            '{"example1":"foo","example2":"bar"}',
+        ]
+    )
+    assert result.decode("utf-8") == '{"example1":"cys","example2":"bar"}\n'
 
 
 def test_transform_field_surname():

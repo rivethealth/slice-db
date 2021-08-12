@@ -5,6 +5,7 @@ import datetime
 import enum
 import hashlib
 import importlib.resources as pkg_resources
+import json
 import random
 import string
 import typing
@@ -236,6 +237,39 @@ class GeozipTransform:
         return str(result).zfill(5)
 
 
+class JsonTransform:
+    def transform(self, text: typing.Optional[str], pepper: bytes):
+        if text is None:
+            return None
+
+        value = json.loads(text)
+        value = self.transform_json(value, pepper)
+        return json.dumps(value, separators=(",", ":"))
+
+
+class JsonObjectTransform(JsonTransform):
+    def __init__(self, properties: typing.Dict):
+        self._properties = properties
+
+    def transform_json(self, value, pepper: bytes):
+        new_value = dict(value)
+        for property, transform in self._properties.items():
+            if property in value:
+                new_value[property] = transform.transform_json(value[property], pepper)
+
+        return new_value
+
+
+class JsonStringTransform(JsonTransform):
+    def __init__(self, inner):
+        self._inner = inner
+
+    def transform_json(self, value, pepper: bytes):
+        if value is not None and type(value) != str:
+            raise Exception(f"Got {type(value)} not a string")
+        return self._inner.transform(value, pepper)
+
+
 def create_transform(type, params):
     if type == "alphanumeric":
         if params is None:
@@ -254,6 +288,15 @@ def create_transform(type, params):
         if params is None:
             params = {}
         return GivenNameTransform(case_insensitive=params.get("caseInsensitive", False))
+    if type == "json_object":
+        properties = {
+            name: create_transform(value["type"], value.get("params"))
+            for name, value in params["properties"].items()
+        }
+        return JsonObjectTransform(properties=properties)
+    if type == "json_string":
+        inner = create_transform(params["type"], params.get("params"))
+        return JsonStringTransform(inner=inner)
     if type == "null":
         return NullTransform()
     if type == "surname":

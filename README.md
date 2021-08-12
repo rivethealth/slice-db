@@ -157,6 +157,18 @@ Uses
 
 - `caseInsensitive` - Whether the value is case-insensitive
 
+### json_object
+
+Operation on json_object, with options.
+
+- `properties` - Object of properties to transforms
+
+### json_string
+
+Operation on json_object, with options.
+
+- Inner tansform
+
 ### null
 
 Null value.
