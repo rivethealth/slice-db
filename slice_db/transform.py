@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import codecs
 import datetime
+import enum
 import hashlib
 import importlib.resources as pkg_resources
 import random
@@ -42,43 +43,105 @@ class IntRange:
         return self._min + x
 
 
-LOWERCASE_CATEGORIES = set(["Ll", "Lm", "Lo"])
-NUMERIC_CATEGORIES = set(["Nd", "Nl", "No"])
-UPPERCASE_CATEGORIES = set(["Lu", "Lt", "Co", "Cs", "So"])
+class CharCategory(enum.Enum):
+    LOWERCASE = enum.auto()
+    NUMBER = enum.auto()
+    OTHER = enum.auto()
+    UPPERCASE = enum.auto()
 
-alphanumeric = string.ascii_lowercase + string.ascii_uppercase + string.digits
+
+class Char:
+    _LOWERCASE_CATEGORIES = set(["Ll", "Lm", "Lo"])
+    _NUMERIC_CATEGORIES = set(["Nd", "Nl", "No"])
+    _UPPERCASE_CATEGORIES = set(["Lu", "Lt", "Co", "Cs", "So"])
+
+    @staticmethod
+    def char_category(c: str) -> CharCategory:
+        category = unicodedata.category(c)
+        if category in Char._UPPERCASE_CATEGORIES:
+            return CharCategory.UPPERCASE
+        if category in Char._LOWERCASE_CATEGORIES:
+            return CharCategory.LOWERCASE
+        if category in Char._NUMERIC_CATEGORIES:
+            return CharCategory.NUMBER
+        return CharCategory.OTHER
+
+    @staticmethod
+    def string_categories(s: str) -> typing.Set[CharCategory]:
+        return set(Char.char_category(c) for c in s)
+
+
+class CaseInsensitive:
+    def __init__(self, inner):
+        self._inner = inner
+
+    def transform(self, text: str):
+        # normalize to uppercase
+        transformed = self._inner(text.upper())
+        # back to original case
+        if len(text) < len(transformed):
+            text += text[-1] * (len(transformed) - len(text))
+        return "".join(
+            c2.lower() if c1.islower() else c2.upper()
+            for c1, c2 in zip(text, transformed)
+        )
 
 
 class AlphanumericTransform:
-    def __init__(self, unique=False):
-        self.unique = unique
+    def __init__(self, case_insensitive, unique):
+        self._case_insensitive = case_insensitive
+        self._unique = unique
 
     def transform(self, text: typing.Optional[str], pepper: bytes):
         if text is None:
             return None
 
-        if self.unique:
-            c = pyffx.String(pepper, alphabet=alphanumeric, length=len(text))
-            text = "".join(
-                c if c in alphanumeric else alphanumeric[ord(c) % len(alphanumeric)]
-                for c in text
-            )
-            return c.encrypt(text)
+        fn = lambda text: self._transform(text, pepper)
+        if self._case_insensitive:
+            return CaseInsensitive(fn).transform(text)
+        return fn(text)
+
+    def _transform(self, text: str, pepper: bytes):
+        if self._unique:
+            return self._transform_unique(text, pepper)
 
         rnd = random.Random(bytes_hash_int(text.encode("utf-8") + pepper))
         result = "".join(self._replace(rnd, c) for c in text)
         return result
 
+    def _transform_unique(self, text: str, pepper: bytes):
+        categories = Char.string_categories(text)
+        alphabet = ""
+        if CharCategory.UPPERCASE in categories:
+            alphabet += string.ascii_uppercase
+        if CharCategory.LOWERCASE in categories:
+            alphabet += string.ascii_lowercase
+        if CharCategory.NUMBER in categories:
+            alphabet += string.digits
+        if not alphabet:
+            alphabet = string.ascii_uppercase + string.ascii_lowercase + string.digits
+
+        c = pyffx.String(pepper, alphabet=alphabet, length=len(text))
+        text = "".join(
+            c if c in alphabet else alphabet[ord(c) % len(alphabet)] for c in text
+        )
+        return c.encrypt(text)
+
+    @staticmethod
+    def _replace_category(rnd, category: CharCategory):
+        if category is CharCategory.UPPERCASE:
+            return chr(rnd.randint(ord("A"), ord("Z")))
+        if category is CharCategory.LOWERCASE:
+            return chr(rnd.randint(ord("a"), ord("z")))
+        if category is CharCategory.NUMBER:
+            return chr(rnd.randint(ord("0"), ord("9")))
+
     @staticmethod
     def _replace(rnd, c):
-        category = unicodedata.category(c)
-        if category in ("Lu", "Lt", "Co", "Cs", "So"):
-            return chr(rnd.randint(ord("A"), ord("Z")))
-        if category in ("Ll", "Lm", "Lo"):
-            return chr(rnd.randint(ord("a"), ord("z")))
-        if category in ("Nd", "Nl", "No"):
-            return chr(rnd.randint(ord("0"), ord("9")))
-        return c
+        category = Char.char_category(c)
+        if category == CharCategory.OTHER:
+            return c
+        return AlphanumericTransform._replace_category(rnd, category)
 
 
 class ConstTransform:
@@ -93,16 +156,23 @@ class ConstTransform:
 
 
 class GivenNameTransform:
-    def __init__(self):
+    def __init__(self, case_insensitive: bool):
         with pkg_resources.open_text("slice_db.data", "given-name.txt") as f:
             text = f.read()
         options = [name for name in text.split("\n") if name]
+        self._case_insensitive = case_insensitive
         self._choice = Choice(options)
 
     def transform(self, text: typing.Optional[str], pepper: bytes):
         if text is None:
             return None
 
+        fn = lambda text: self._transform(text, pepper)
+        if self._case_insensitive:
+            return CaseInsensitive(fn).transform(text)
+        return fn(text)
+
+    def _transform(self, text: str, pepper: bytes):
         return self._choice.choose(text.encode("utf-8") + pepper)
 
 
@@ -125,16 +195,23 @@ class NullTransform:
 
 
 class SurnameTransform:
-    def __init__(self):
+    def __init__(self, case_insensitive: bool):
         with pkg_resources.open_text("slice_db.data", "surname.txt") as f:
             text = f.read()
         options = [name for name in text.split("\n") if name]
+        self._case_insensitive = case_insensitive
         self._choice = Choice(options)
 
     def transform(self, text: typing.Optional[str], pepper: bytes):
         if text is None:
             return None
 
+        fn = lambda text: self._transform(text, pepper)
+        if self._case_insensitive:
+            return CaseInsensitive(fn).transform(text)
+        return fn(text)
+
+    def _transform(self, text: str, pepper: bytes):
         return self._choice.choose(text.encode("utf-8") + pepper)
 
 
@@ -161,7 +238,12 @@ class GeozipTransform:
 
 def create_transform(type, params):
     if type == "alphanumeric":
-        return AlphanumericTransform(**(params or {}))
+        if params is None:
+            params = {}
+        return AlphanumericTransform(
+            case_insensitive=params.get("caseInsensitive", False),
+            unique=params.get("unique", False),
+        )
     if type == "const":
         return ConstTransform(params)
     if type == "date_year":
@@ -169,11 +251,15 @@ def create_transform(type, params):
     if type == "geozip":
         return GeozipTransform()
     if type == "given_name":
-        return GivenNameTransform()
+        if params is None:
+            params = {}
+        return GivenNameTransform(case_insensitive=params.get("caseInsensitive", False))
     if type == "null":
         return NullTransform()
     if type == "surname":
-        return SurnameTransform()
+        if params is None:
+            params = {}
+        return SurnameTransform(case_insensitive=params.get("caseInsensitive", False))
     raise Exception(f"Invalid transform type {type}")
 
 

@@ -1,5 +1,6 @@
 import asyncpg
 
+
 async def setup_connection(conn: asyncpg.Connection):
     await conn.execute("SET lock_timeout = 0")
     await conn.execute("SET row_security = off")

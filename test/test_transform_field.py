@@ -18,6 +18,38 @@ def test_transform_field_alphanumeric():
     assert result.decode("utf-8") == "262 Eimu Yg $7.96\n"
 
 
+def test_transform_field_alphanumeric_case_insensitive():
+    result = run_process(
+        [
+            "slicedb",
+            "transform-field",
+            "--pepper",
+            "abc",
+            "--transform",
+            "alphanumeric",
+            "--params",
+            '{"caseInsensitive":true}',
+            "abc",
+        ]
+    )
+    assert result.decode("utf-8") == "vfj\n"
+
+    result = run_process(
+        [
+            "slicedb",
+            "transform-field",
+            "--pepper",
+            "abc",
+            "--transform",
+            "alphanumeric",
+            "--params",
+            '{"caseInsensitive":true}',
+            "aBc",
+        ]
+    )
+    assert result.decode("utf-8") == "vFj\n"
+
+
 def test_transform_field_alphanumeric_unique():
     result = run_process(
         [
@@ -32,7 +64,7 @@ def test_transform_field_alphanumeric_unique():
             "abc",
         ]
     )
-    assert result.decode("utf-8") == "UJ4\n"
+    assert result.decode("utf-8") == "grk\n"
 
 
 def test_transform_field_const():
@@ -95,6 +127,38 @@ def test_transform_field_given_name():
         ]
     )
     assert result.decode("utf-8") == "Jeramy\n"
+
+
+def test_transform_field_given_name_case_insenstive():
+    result = run_process(
+        [
+            "slicedb",
+            "transform-field",
+            "--pepper",
+            "abc",
+            "--transform",
+            "given_name",
+            "JANE",
+            "--params",
+            '{"caseInsensitive":true}',
+        ]
+    )
+    assert result.decode("utf-8") == "KIMBERLEY\n"
+
+    result = run_process(
+        [
+            "slicedb",
+            "transform-field",
+            "--pepper",
+            "abc",
+            "--transform",
+            "given_name",
+            "Jane",
+            "--params",
+            '{"caseInsensitive":true}',
+        ]
+    )
+    assert result.decode("utf-8") == "Kimberley\n"
 
 
 def test_transform_field_surname():

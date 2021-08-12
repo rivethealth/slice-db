@@ -7,6 +7,7 @@ from ..pg import server_settings
 from ..restore import RestoreIo, RestoreParams, restore
 from .common import open_bytes_read
 
+
 async def restore_main(args):
     params = RestoreParams(
         include_schema=args.include_schema,
@@ -27,6 +28,7 @@ async def restore_main(args):
         )
 
         await restore(io, params)
+
 
 async def _init_connection(conn: asyncpg.Connection):
     await setup_connection(conn)

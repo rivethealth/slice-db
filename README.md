@@ -125,6 +125,7 @@ Transformation may operate an existing slice, or happen during the dump.
 
 Replace alphanumeric characters, preserve the type and case of characters.
 
+- `caseInsensitive` - Whether the value is case-insensitive
 - `unique` - Whether to generate a unique value
 
 ### composite
@@ -154,6 +155,8 @@ Replace given name.
 Uses
 [https://www.ssa.gov/cgi-bin/popularnames.cgi](https://www.ssa.gov/cgi-bin/popularnames.cgi).
 
+- `caseInsensitive` - Whether the value is case-insensitive
+
 ### null
 
 Null value.
@@ -168,6 +171,8 @@ Replace surname
 
 Uses
 [https://raw.githubusercontent.com/fivethirtyeight/data/master/most-common-name/surnames.csv](https://raw.githubusercontent.com/fivethirtyeight/data/master/most-common-name/surnames.csv)
+
+- `caseInsensitive` - Whether the value is case-insensitive
 
 ## Restore
 
