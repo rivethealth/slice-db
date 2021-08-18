@@ -77,6 +77,8 @@ class CaseInsensitive:
         self._inner = inner
 
     def transform(self, text: str):
+        if not text:
+            return self._inner(text)
         # normalize to uppercase
         transformed = self._inner(text.upper())
         # back to original case
