@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import enum
-import importlib
+import importlib.resources
 import re
 import string
 import typing
@@ -9,6 +9,7 @@ import unicodedata
 
 import pyffx
 
+from ..collection.dict import groups
 from ..transform import Transform, TransformContext, Transformer
 from .common import create_random
 
@@ -121,7 +122,7 @@ class Word:
             return WordCase.UPPERCASE
         if all(c == CharCategory.LOWERCASE for c in categories):
             return WordCase.LOWERCASE
-        if categories[0] == WordCase.UPPERCASE and all(
+        if categories[0] == CharCategory.UPPERCASE and all(
             c == CharCategory.LOWERCASE for c in categories[1:]
         ):
             return WordCase.TITLECASE
@@ -139,12 +140,12 @@ class Word:
 
 class WordTransform:
     def __init__(self):
-        with pkg_resource.open_text("slice_db.data", "word.txt") as f:
+        with importlib.resources.open_text("slice_db.data", "word.txt") as f:
             text = f.read()
-        self._words = [word for word in text.split("\n") if word]
+        self._words = groups((word for word in text.split("\n") if word), len)
 
     def create(self, context: TransformContext, pepper: bytes, config: any):
-        return _WordTransformer(self._words, max(self.words.keys()), pepper)
+        return _WordTransformer(self._words, max(self._words.keys()), pepper)
 
 
 class _WordTransformer:
@@ -173,17 +174,19 @@ class _WordTransformer:
             category = c and Char.char_category(c)
             if category == CharCategory.LOWERCASE or category == CharCategory.UPPERCASE:
                 word += c
+                i += 1
                 continue
             if word:
                 case = Word.case(word)
-                try:
-                    words = self._words[len(word)]
-                except KeyError:
-                    words = self._words[self._default_length]
+                words = self._words[len(word)] or self._words[self._default_length]
+                word = ""
                 new_text += Word.apply_case(random.choice(words), case)
+            if c is None:
+                break
             if category == CharCategory.NUMBER:
-                new_text += random.choice(string.ascii_digits)
+                new_text += random.choice(string.digits)
             else:
                 new_text += c
+            i += 1
 
         return new_text

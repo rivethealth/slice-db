@@ -196,3 +196,18 @@ def test_transform_field_us_state():
         ]
     )
     assert result.decode("utf-8") == "Tennessee\n"
+
+
+def test_transform_field_us_state():
+    result = run_process(
+        [
+            "slicedb",
+            "transform-field",
+            "--pepper",
+            "abc",
+            "--transforms",
+            '{"":{"class":"WordTransform"}}',
+            "See Spot run.",
+        ]
+    )
+    assert result.decode("utf-8") == "Eco Lion pdf.\n"
