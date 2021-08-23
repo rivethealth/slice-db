@@ -1,18 +1,14 @@
+import importlib.resources
 import typing
 
 from ..transform import Transform, Transformer
 from .common import create_random
 from .text import Char, Word, WordCase
 
-try:
-    import importlib.resources as pkg_resources
-except ImportError:
-    import importlib_resources as pkg_resources
-
 
 class GivenNameTransform(Transform):
     def create(self, manager, pepper: bytes, params):
-        with pkg_resources.open_text("slice_db.data", "given-name.txt") as f:
+        with importlib.resources.open_text("slice_db.data", "given-name.txt") as f:
             text = f.read()
         names = [name for name in text.split("\n") if name]
         return _NameTransformer(names, pepper)
@@ -20,7 +16,7 @@ class GivenNameTransform(Transform):
 
 class SurnameTransform(Transform):
     def create(self, manager, pepper: bytes, params):
-        with pkg_resources.open_text("slice_db.data", "surname.txt") as f:
+        with importlib.resources.open_text("slice_db.data", "surname.txt") as f:
             text = f.read()
         names = [name for name in text.split("\n") if name]
         return _NameTransformer(names, pepper)

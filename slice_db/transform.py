@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import codecs
 import importlib
-import importlib.resources as pkg_resources
 import typing
 
 from .collection.dict import groups

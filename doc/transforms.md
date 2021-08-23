@@ -17,7 +17,8 @@ Replace with US city.
 
 Class: `CityTransform`
 
-Uses [plotly/datasets](https://raw.githubusercontent.com/plotly/datasets/master/us-cities-top-1k.csv).
+Uses
+[plotly/datasets](https://raw.githubusercontent.com/plotly/datasets/master/us-cities-top-1k.csv).
 
 ## Compose
 
@@ -51,8 +52,7 @@ Class: `GeopzipTransform`
 
 Uses [simplemaps.com](https://simplemaps.com/data/us-zips).
 
-Uses
-[www.ssa.gov](https://www.ssa.gov/cgi-bin/popularnames.cgi).
+Uses [www.ssa.gov](https://www.ssa.gov/cgi-bin/popularnames.cgi).
 
 ## Given name
 

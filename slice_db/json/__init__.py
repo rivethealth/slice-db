@@ -1,3 +1,4 @@
+import importlib.resources
 import json
 import typing
 
@@ -5,12 +6,6 @@ import dataclasses_json.mm
 import jsonschema
 
 from ..resource import ResourceFactory
-
-try:
-    import importlib.resources as pkg_resources
-except ImportError:
-    import importlib_resources as pkg_resources
-
 
 T = typing.TypeVar("T")
 
@@ -62,7 +57,7 @@ class DataJsonFormat(typing.Generic[T]):
 
 
 def package_json_format(package: str, name: str):
-    with pkg_resources.open_text(package, name) as f:
+    with importlib.resources.open_text(package, name) as f:
         json_schema_data = json.load(f)
     json_schema = JsonSchema(json_schema_data)
     return JsonFormat(json_schema)

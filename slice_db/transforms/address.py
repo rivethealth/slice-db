@@ -1,3 +1,4 @@
+import importlib.resources
 import typing
 
 from ..collection.dict import groups
@@ -5,15 +6,10 @@ from ..transform import Transform, TransformContext, Transformer
 from .common import create_random
 from .text import Char, Word, WordCase
 
-try:
-    import importlib.resources as pkg_resources
-except ImportError:
-    import importlib_resources as pkg_resources
-
 
 class AddressLine1Transform(Transform):
     def __init__(self):
-        with pkg_resources.open_text("slice_db.data", "street.txt") as f:
+        with importlib.resources.open_text("slice_db.data", "street.txt") as f:
             text = f.read()
         self._streets = [line for line in text.split("\n") if line]
 
@@ -59,7 +55,7 @@ class _AddressLine2Transformer(Transformer):
 
 class CityTransform(Transform):
     def __init__(self):
-        with pkg_resources.open_text("slice_db.data", "city.txt") as f:
+        with importlib.resources.open_text("slice_db.data", "city.txt") as f:
             text = f.read()
         self._cities = [line for line in text.split("\n") if line]
 
@@ -84,7 +80,7 @@ class _CityTransformer(Transformer):
 
 class GeozipTransform(Transform):
     def __init__(self):
-        with pkg_resources.open_text("slice_db.data", "zip.txt") as f:
+        with importlib.resources.open_text("slice_db.data", "zip.txt") as f:
             text = f.read()
         options = [line for line in text.split("\n") if line]
         self._by_geozip = groups(options, lambda x: str(x).zfill(5)[0:3])
@@ -123,11 +119,11 @@ class _GeozipTransformer(Transformer):
 
 class UsStateTransform(Transform):
     def __init__(self):
-        with pkg_resources.open_text("slice_db.data", "us-state.txt") as f:
+        with importlib.resources.open_text("slice_db.data", "us-state.txt") as f:
             text = f.read()
         self._states = [line for line in text.split("\n") if line]
 
-        with pkg_resources.open_text("slice_db.data", "us-state-abbr.txt") as f:
+        with importlib.resources.open_text("slice_db.data", "us-state-abbr.txt") as f:
             text = f.read()
         self._abbr = [line for line in text.split("\n") if line]
 
