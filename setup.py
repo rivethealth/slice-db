@@ -33,6 +33,7 @@ setuptools.setup(
     install_requires=[
         "asyncpg",
         "dataclasses_json==0.3.7",
+        "jsonpath-ng",
         "jsonschema",
         "numpy",
         "pg-sql",

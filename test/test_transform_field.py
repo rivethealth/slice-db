@@ -3,6 +3,36 @@ import subprocess
 from process import run_process
 
 
+def test_transform_field_address_line_1():
+    result = run_process(
+        [
+            "slicedb",
+            "transform-field",
+            "--pepper",
+            "abc",
+            "--transforms",
+            '{"":{"class":"AddressLine1Transform"}}',
+            "123 Main St",
+        ]
+    )
+    assert result.decode("utf-8") == "8901 Sherrin Avenue South\n"
+
+
+def test_transform_field_address_line_2():
+    result = run_process(
+        [
+            "slicedb",
+            "transform-field",
+            "--pepper",
+            "abc",
+            "--transforms",
+            '{"":{"class":"AddressLine2Transform"}}',
+            "Suite 101",
+        ]
+    )
+    assert result.decode("utf-8") == "#897\n"
+
+
 def test_transform_field_alphanumeric():
     result = run_process(
         [
@@ -10,44 +40,12 @@ def test_transform_field_alphanumeric():
             "transform-field",
             "--pepper",
             "abc",
-            "--transform",
-            "alphanumeric",
+            "--transforms",
+            '{"":{"class":"AlphanumericTransform"}}',
             "123 Main St $9.99",
         ]
     )
-    assert result.decode("utf-8") == "262 Eimu Yg $7.96\n"
-
-
-def test_transform_field_alphanumeric_case_insensitive():
-    result = run_process(
-        [
-            "slicedb",
-            "transform-field",
-            "--pepper",
-            "abc",
-            "--transform",
-            "alphanumeric",
-            "--params",
-            '{"caseInsensitive":true}',
-            "abc",
-        ]
-    )
-    assert result.decode("utf-8") == "vfj\n"
-
-    result = run_process(
-        [
-            "slicedb",
-            "transform-field",
-            "--pepper",
-            "abc",
-            "--transform",
-            "alphanumeric",
-            "--params",
-            '{"caseInsensitive":true}',
-            "aBc",
-        ]
-    )
-    assert result.decode("utf-8") == "vFj\n"
+    assert result.decode("utf-8") == "850 Xxqy Wh $0.97\n"
 
 
 def test_transform_field_alphanumeric_unique():
@@ -57,14 +55,27 @@ def test_transform_field_alphanumeric_unique():
             "transform-field",
             "--pepper",
             "abc",
-            "--transform",
-            "alphanumeric",
-            "--params",
-            '{"unique":true}',
+            "--transforms",
+            '{"":{"class":"AlphanumericTransform","config":{"unique":true}}}',
             "abc",
         ]
     )
     assert result.decode("utf-8") == "grk\n"
+
+
+def test_transform_field_city():
+    result = run_process(
+        [
+            "slicedb",
+            "transform-field",
+            "--pepper",
+            "abc",
+            "--transforms",
+            '{"":{"class":"CityTransform"}}',
+            "New York City",
+        ]
+    )
+    assert result.decode("utf-8") == "Woodland\n"
 
 
 def test_transform_field_const():
@@ -74,10 +85,8 @@ def test_transform_field_const():
             "transform-field",
             "--pepper",
             "abc",
-            "--transform",
-            "const",
-            "--params",
-            '"X"',
+            "--transforms",
+            '{"":{"class":"ConstTransform","config":"X"}}',
             "example",
         ]
     )
@@ -91,12 +100,12 @@ def test_transform_field_date_year():
             "transform-field",
             "--pepper",
             "abc",
-            "--transform",
-            "date_year",
+            "--transforms",
+            '{"":{"class":"DateYearTransform"}}',
             "2005-03-09",
         ]
     )
-    assert result.decode("utf-8") == "2005-04-01\n"
+    assert result.decode("utf-8") == "2005-08-19\n"
 
 
 def test_transform_field_geozip():
@@ -106,12 +115,12 @@ def test_transform_field_geozip():
             "transform-field",
             "--pepper",
             "abc",
-            "--transform",
-            "geozip",
+            "--transforms",
+            '{"":{"class":"GeozipTransform"}}',
             "94356",
         ]
     )
-    assert result.decode("utf-8") == "94303\n"
+    assert result.decode("utf-8") == "94304\n"
 
 
 def test_transform_field_given_name():
@@ -121,76 +130,27 @@ def test_transform_field_given_name():
             "transform-field",
             "--pepper",
             "abc",
-            "--transform",
-            "given_name",
+            "--transforms",
+            '{"":{"class":"GivenNameTransform"}}',
             "Jane",
         ]
     )
-    assert result.decode("utf-8") == "Jeramy\n"
+    assert result.decode("utf-8") == "Joe\n"
 
 
-def test_transform_field_given_name_case_insenstive():
+def test_transform_field_json_path():
     result = run_process(
         [
             "slicedb",
             "transform-field",
             "--pepper",
             "abc",
-            "--transform",
-            "given_name",
-            "--params",
-            '{"caseInsensitive":true}',
-            "JANE",
-        ]
-    )
-    assert result.decode("utf-8") == "KIMBERLEY\n"
-
-    result = run_process(
-        [
-            "slicedb",
-            "transform-field",
-            "--pepper",
-            "abc",
-            "--transform",
-            "given_name",
-            "--params",
-            '{"caseInsensitive":true}',
-            "Jane",
-        ]
-    )
-    assert result.decode("utf-8") == "Kimberley\n"
-
-
-def test_transform_field_json():
-    result = run_process(
-        [
-            "slicedb",
-            "transform-field",
-            "--pepper",
-            "abc",
-            "--transform",
-            "json_object",
-            "--params",
-            '{"properties":{"example1":{"type":"json_string", "params":{"type": "alphanumeric"}}}}',
+            "--transforms",
+            '{"":{"class":"JsonPathTransform","config":[{"path":"example1","transform":"alphanumeric"},{"path":"example2","transform":"alphanumeric"}]},"alphanumeric":{"class":"AlphanumericTransform"}}',
             '{"example1":"foo","example2":"bar"}',
         ]
     )
-    assert result.decode("utf-8") == '{"example1":"cys","example2":"bar"}\n'
-
-
-def test_transform_field_surname():
-    result = run_process(
-        [
-            "slicedb",
-            "transform-field",
-            "--pepper",
-            "abc",
-            "--transform",
-            "surname",
-            "Baker",
-        ]
-    )
-    assert result.decode("utf-8") == "Bertrand\n"
+    assert result.decode("utf-8") == '{"example1":"axl","example2":"fwe"}\n'
 
 
 def test_transform_field_null():
@@ -200,9 +160,39 @@ def test_transform_field_null():
             "transform-field",
             "--pepper",
             "abc",
-            "--transform",
-            "const",
+            "--transforms",
+            '{"":{"class":"NullTransform"}}',
             "example",
         ]
     )
     assert result.decode("utf-8") == "\n"
+
+
+def test_transform_field_surname():
+    result = run_process(
+        [
+            "slicedb",
+            "transform-field",
+            "--pepper",
+            "abc",
+            "--transforms",
+            '{"":{"class":"SurnameTransform"}}',
+            "Baker",
+        ]
+    )
+    assert result.decode("utf-8") == "Kemper\n"
+
+
+def test_transform_field_us_state():
+    result = run_process(
+        [
+            "slicedb",
+            "transform-field",
+            "--pepper",
+            "abc",
+            "--transforms",
+            '{"":{"class":"UsStateTransform"}}',
+            "New York",
+        ]
+    )
+    assert result.decode("utf-8") == "Tennessee\n"

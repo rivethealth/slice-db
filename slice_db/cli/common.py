@@ -1,4 +1,13 @@
+import argparse
+import json
 import sys
+
+
+def json_type(string: str):
+    try:
+        return json.loads(string)
+    except json.decoder.JSONDecodeError as e:
+        raise argparse.ArgumentError(str(e))
 
 
 def open_bytes_read(path):

@@ -45,7 +45,8 @@ _SCHEMA_JSON = {
 }
 
 _TRANSFORM_JSON = {
-    "tables": {"public.child": {"columns": {"name": {"transform": "given_name"}}}}
+    "tables": {"public.child": {"columns": {"name": "given_name"}}},
+    "transforms": {"given_name": {"class": "GivenNameTransform"}},
 }
 
 
@@ -115,4 +116,4 @@ def test_dump_transform(pg_database, snapshot):
 
             cur.execute("SELECT * FROM child ORDER BY id")
             result = cur.fetchall()
-            assert result == [(1, 1, "Judson"), (2, 1, "Shirley")]
+            assert result == [(1, 1, "Patsy"), (2, 1, "Myron")]

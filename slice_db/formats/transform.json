@@ -6,20 +6,7 @@
     "column": {
       "description": "Column",
       "title": "Column",
-      "properties": {
-        "params": {
-          "default": null,
-          "description": "Parameters for transform",
-          "title": "Transform parameters"
-        },
-        "transform": {
-          "description": "Type of transform",
-          "title": "Transform",
-          "type": "string"
-        }
-      },
-      "required": ["transform"],
-      "type": "object"
+      "type": "string"
     },
     "table": {
       "description": "Table",
@@ -35,6 +22,29 @@
       },
       "title": "Table",
       "type": "object"
+    },
+    "transform": {
+      "description": "Transform",
+      "properties": {
+        "class": {
+          "description": "Class name.",
+          "title": "Class",
+          "type": "string"
+        },
+        "config": {
+          "default": null,
+          "description": "Configuration given to transform",
+          "title": "Configuration"
+        },
+        "module": {
+          "default": "slice_db.transforms",
+          "description": "Module name.",
+          "title": "Module",
+          "type": "string"
+        }
+      },
+      "required": ["class"],
+      "title": "Transform"
     }
   },
   "properties": {
@@ -45,7 +55,16 @@
       "description": "Tables. Omitted tables are left untouched.",
       "title": "Tables",
       "type": "object"
+    },
+    "transforms": {
+      "additionalProperties": {
+        "$ref": "#/definitions/transform"
+      },
+      "description": "Transforms.",
+      "title": "Transforms",
+      "type": "object"
     }
   },
+  "required": ["tables", "transforms"],
   "type": "object"
 }

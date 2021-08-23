@@ -42,7 +42,7 @@ from .pg.token import parse_statements
 from .resource import AsyncResourceFactory, ResourceFactory
 from .slice import SliceWriter
 from .sql import SqlWriter
-from .transform import TableTransformer
+from .transform import Transforms
 
 
 class OutputType(enum.Enum):
@@ -96,8 +96,9 @@ async def dump(
         transformers = {}
     else:
         transform = TRANSFORM_DATA_JSON_FORMAT.load(io.transform_file)
+        transforms = Transforms(transform.transforms, params.pepper)
         transformers = {
-            id: TableTransformer(transform_table.columns, schema.get_table(id).columns)
+            id: transforms.table(transform_table.columns, schema.get_table(id).columns)
             for id, transform_table in transform.tables.items()
         }
 
@@ -150,7 +151,6 @@ async def dump(
                 and params.output_type != OutputType.SQL,
                 output=output,
                 parallelism=params.parallelism,
-                pepper=params.pepper,
                 result=result,
                 roots=roots,
                 strategy=params.strategy,
@@ -180,7 +180,6 @@ async def _dump_rows(
     include_schema: bool,
     output: _Output,
     parallelism: int,
-    pepper: bytes,
     result,
     roots: typing.List[Root],
     strategy: DumpStrategy,
@@ -202,7 +201,6 @@ async def _dump_rows(
         conn_factory=conn_factory,
         lock=lock,
         output=output,
-        pepper=pepper,
         result=result,
         transformers=transformers,
         queue=queue,
@@ -429,7 +427,6 @@ class Dump:
     conn_factory: AsyncResourceFactory[asyncpg.Connection]
     lock: typing.AsyncContextManager
     output: _SliceOutput
-    pepper: str
     result: _DiscoveryResult
     transformers: typing.Dict[str, TableTransformer]
     queue: Queue

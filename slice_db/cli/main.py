@@ -7,6 +7,7 @@ import uvloop
 
 from ..log import TRACE
 from ..version import __version__
+from .common import json_type
 
 warnings.filterwarnings("ignore")
 
@@ -79,17 +80,17 @@ def create_parser():
         description="Provide one of the subcommands for more specific help.",
     )
 
-    add_dump_command(subparsers)
-    add_restore_command(subparsers)
-    add_schema_command(subparsers)
-    add_schema_filter_command(subparsers)
-    add_transform_command(subparsers)
-    add_transform_field_command(subparsers)
+    _add_dump_command(subparsers)
+    _add_restore_command(subparsers)
+    _add_schema_command(subparsers)
+    _add_schema_filter_command(subparsers)
+    _add_transform_command(subparsers)
+    _add_transform_field_command(subparsers)
 
     return parser
 
 
-def add_dump_command(subparsers):
+def _add_dump_command(subparsers):
     parser = subparsers.add_parser(
         "dump",
         description="Dump data from database.",
@@ -148,7 +149,7 @@ def add_dump_command(subparsers):
     )
 
 
-def add_restore_command(subparsers):
+def _add_restore_command(subparsers):
     parser = subparsers.add_parser(
         "restore", description="Restore data.", formatter_class=ArgumentFormatter
     )
@@ -192,7 +193,7 @@ def add_restore_command(subparsers):
     )
 
 
-def add_schema_command(subparsers):
+def _add_schema_command(subparsers):
     parser = subparsers.add_parser(
         "schema",
         description="Collect schema from database.",
@@ -207,7 +208,7 @@ def add_schema_command(subparsers):
     )
 
 
-def add_schema_filter_command(subparsers):
+def _add_schema_filter_command(subparsers):
     parser = subparsers.add_parser("schema-filter")
     parser.add_argument("-i", "--input", default="-", help="Input")
     parser.add_argument("-o", "--output", default="-", help="Output")
@@ -229,7 +230,7 @@ def add_schema_filter_command(subparsers):
     children_parser.add_argument("table", nargs="*")
 
 
-def add_transform_command(subparsers):
+def _add_transform_command(subparsers):
     parser = subparsers.add_parser(
         "transform", description="Transform slice", formatter_class=ArgumentFormatter
     )
@@ -237,16 +238,18 @@ def add_transform_command(subparsers):
     parser.add_argument("--transform", required=True)
 
 
-def add_transform_field_command(subparsers):
+def _add_transform_field_command(subparsers):
     parser = subparsers.add_parser(
         "transform-field",
         description="Transform field",
         formatter_class=ArgumentFormatter,
     )
     update_help(parser)
+    parser.add_argument(
+        "--transforms", help="Transform JSON", required=True, type=json_type
+    )
+    parser.add_argument("--name", default="", help="Name of transform")
     parser.add_argument("--pepper", help="Pepper.")
-    parser.add_argument("--transform", required=True)
-    parser.add_argument("--params", default="null")
     parser.add_argument("field")
 
 

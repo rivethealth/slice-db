@@ -117,74 +117,30 @@ Replacements are deterministic for a given pepper. By default, the pepper is
 randomly generated each run. You may specify it as `--pepper`. Note that
 possession of the pepper makes the data guessable.
 
-Transformation may operate an existing slice, or happen during the dump.
+Transformation may operate on an existing slice (TODO), or happen during the
+dump.
 
-### Transforms
+### Configuration
 
-#### alphanumeric
+Transforms are specified by:
 
-Replace alphanumeric characters, preserve the type and case of characters.
+- `class`, the Python class
+- `config`, transform-specific options
+- `module`, defaults to `slice_db.transforms`
 
-- `caseInsensitive` - Whether the value is case-insensitive
-- `unique` - Whether to generate a unique value
+The name given to the transform is appended to the global pepper.
 
-### composite
+### Custom transforms
 
-Parse as a PostgreSQL composite, with suboptions (TODO).
+To create custom transforms, implement `slice_db.transform.Transform`, expose
+the class on a module, and install the module so that is accessible by
+`slicedb`.
 
-#### const
+### Built-in transforms
 
-Const value
+The `slice_db.transforms` package has many common transforms.
 
-Params are that value
-
-#### date_year
-
-Change date by up to one year.
-
-### geozip
-
-Replace zip code, preserving the first three digits.
-
-Uses [https://simplemaps.com/data/us-zips](https://simplemaps.com/data/us-zips).
-
-### given_name
-
-Replace given name.
-
-Uses
-[https://www.ssa.gov/cgi-bin/popularnames.cgi](https://www.ssa.gov/cgi-bin/popularnames.cgi).
-
-- `caseInsensitive` - Whether the value is case-insensitive
-
-### json_object
-
-Operation on json_object, with options.
-
-- `properties` - Object of properties to transforms
-
-### json_string
-
-Operation on json_object, with options.
-
-- Inner tansform
-
-### null
-
-Null value.
-
-### person_name
-
-Replace name.
-
-### surname
-
-Replace surname
-
-Uses
-[https://raw.githubusercontent.com/fivethirtyeight/data/master/most-common-name/surnames.csv](https://raw.githubusercontent.com/fivethirtyeight/data/master/most-common-name/surnames.csv)
-
-- `caseInsensitive` - Whether the value is case-insensitive
+See [transforms.md](doc/transforms.md) for the full list.
 
 ## Restore
 

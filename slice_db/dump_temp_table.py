@@ -124,7 +124,6 @@ class _TableTask:
                     await to_thread(
                         TableTransformer.transform_binary,
                         transformer,
-                        self.dump.pepper,
                         tmp,
                         f,
                     )

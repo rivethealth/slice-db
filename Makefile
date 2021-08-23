@@ -41,6 +41,7 @@ schema: $(SCHEMA_TGT)
 # Format
 ###
 FORMAT_SRC := $(shell find . $(TARGET:%=-not \$(LPAREN) -name % -prune \$(RPAREN)) -name '*.py')
+PRETTIER_SRC := $(shell find . $(TARGET:%=-not \$(LPAREN) -name % -prune \$(RPAREN)) -name '*.md')
 
 .PHONY: format
 format: target/format.target
@@ -48,7 +49,7 @@ format: target/format.target
 .PHONY: test-format
 test-format: target/format-test.target
 
-target/format.target: $(FORMAT_SRC) target/node_modules.target
+target/format.target: $(FORMAT_SRC) $(PRETTIER_SRC) target/node_modules.target
 	mkdir -p $(@D)
 	isort --profile black $(FORMAT_SRC)
 	black -t py37 $(FORMAT_SRC)
