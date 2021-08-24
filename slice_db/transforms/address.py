@@ -108,12 +108,8 @@ class _GeozipTransformer(Transformer):
         random = create_random(zip.encode("utf-8") + self._pepper)
 
         geo = zip[0:3]
-        try:
-            choices = self._by_geozip[geo]
-        except KeyError:
-            result = random.choice(self._all_choices)
-        else:
-            result = random.choice(choices)
+        choices = self._by_geozip[geo] or self._all
+        result = random.choice(choices)
         return str(result).zfill(5)
 
 
