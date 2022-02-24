@@ -21,7 +21,7 @@ def open_server():
             "POSTGRES_HOST_AUTH_METHOD=trust",
             "-p",
             "15432:5432",
-            "postgres",
+            "postgres:13",
             "-c",
             "fsync=off",
             "-c",

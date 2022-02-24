@@ -4,15 +4,26 @@ import asyncio
 import dataclasses
 import functools
 import logging
+import os
 import shutil
+import sys
 import tempfile
 import time
+import typing
 
 import asyncpg
 from pg_sql import SqlId, SqlObject, sql_list
 
 from .concurrent import to_thread
-from .dump import Dump, DumpReferenceDirection, DumpStrategy, Table, TableSegment
+from .dump import (
+    Dump,
+    DumpReferenceDirection,
+    DumpStrategy,
+    Reference,
+    Root,
+    Table,
+    TableSegment,
+)
 from .log import TRACE
 from .transform import TableTransformer
 
@@ -115,18 +126,45 @@ class _TableTask:
                 await _dump_data(conn, self.segment.table, self.segment.row_ids, tmp)
 
             tmp.seek(0)
-            async with self.dump.output.open_segment(self.segment) as f:
-                try:
-                    transformer = self.dump.transformers[self.segment.table.id]
-                except KeyError:
+            try:
+                transformer = self.dump.transformers[self.segment.table.id]
+            except KeyError:
+                # copy file without tranformation
+                async with self.dump.output.open_segment(self.segment) as f:
                     await to_thread(shutil.copyfileobj, tmp, f)
+            else:
+                if hasattr(os, "fork"):
+                    # in a forked process, transform to new temp file, and then copy
+                    # that transformed temp file
+                    with tempfile.TemporaryFile() as tmp_transformed:
+                        os.set_inheritable(tmp.fileno(), True)
+                        os.set_inheritable(tmp_transformed.fileno(), True)
+                        pid = os.fork()
+                        if not pid:
+                            try:
+                                TableTransformer.transform_binary(
+                                    transformer, tmp, tmp_transformed
+                                )
+                                tmp_transformed.flush()
+                            except BaseException as e:
+                                print(str(e), file=sys.stderr)
+                                os._exit(1)
+                            os._exit(0)
+                        _, exit_code = await to_thread(os.waitpid, pid, 0)
+                        if exit_code:
+                            raise Exception("Transform failed")
+                        tmp_transformed.seek(0)
+                        async with self.dump.output.open_segment(self.segment) as f:
+                            await to_thread(shutil.copyfileobj, tmp_transformed, f)
                 else:
-                    await to_thread(
-                        TableTransformer.transform_binary,
-                        transformer,
-                        tmp,
-                        f,
-                    )
+                    # copy file with transformation
+                    async with self.dump.output.open_segment(self.segment) as f:
+                        await to_thread(
+                            TableTransformer.transform_binary,
+                            transformer,
+                            tmp,
+                            f,
+                        )
 
 
 async def _dump_data(conn: asyncpg.Connection, table: Table, ids, out: typing.BinaryIO):

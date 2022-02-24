@@ -5,9 +5,7 @@ import collections
 import contextlib
 import dataclasses
 import enum
-import functools
 import logging
-import shutil
 import tempfile
 import time
 import typing
@@ -42,7 +40,7 @@ from .pg.token import parse_statements
 from .resource import AsyncResourceFactory, ResourceFactory
 from .slice import SliceWriter
 from .sql import SqlWriter
-from .transform import Transforms
+from .transform import TableTransformer, Transforms
 
 
 class OutputType(enum.Enum):
