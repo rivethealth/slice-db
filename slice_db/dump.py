@@ -331,7 +331,7 @@ async def _pg_dump_section(section: str, out: typing.BinaryIO) -> str:
     start = time.perf_counter()
     process = await asyncio.subprocess.create_subprocess_exec(
         "pg_dump",
-        "-B",
+        "-BO",
         "--disable-dollar-quoting",
         "--no-acl",
         "--quote-all-identifiers",
