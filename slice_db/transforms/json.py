@@ -40,7 +40,7 @@ class _JsonPathTransformer(Transformer):
         for part, ms in zip(self._parts, matches):
             for match in ms:
                 if match.value is not None and type(match.value) != str:
-                    raise Exception(f"{self._path} is not null or string")
+                    raise Exception(f"{match.value} ({type(match.value)}) is not null or string")
                 new_value = part.transformer.transform(match.value)
                 match.full_path.update(value, new_value)
 
