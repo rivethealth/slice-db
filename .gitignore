@@ -1,6 +1,9 @@
 *.egg-info/
 *.pyc
 
+*.un~
+*.swp
+
 __pycache__/
 node_modules/
 .vscode/

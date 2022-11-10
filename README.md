@@ -161,3 +161,17 @@ multiple transactions.
 
 - Multiple databases
 - Databases other than PostgreSQL
+
+## Developing
+
+Install: `make install`
+
+Format: `make format`
+
+### Publishing
+
+1. Update slice_db/version.py
+2. Commit `git add slice_db/version.py && git commit -m "Version <version>"`
+3. Tag `git tag v<version>`
+4. Push `git push origin master --tags`
+5. Publish to PyPI: `make upload`
