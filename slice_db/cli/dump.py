@@ -57,9 +57,9 @@ async def dump_main(args):
         await dump(roots, io, params)
     finally:
         try:
-            await asyncio.wait_for(pool.close(), 10)
+            await asyncio.wait_for(pool.close(), 60)
         except asyncio.TimeoutError:
-            logging.error("Pool failed to close within 10s")
+            logging.error("Pool failed to close within 60s")
 
 
 async def _init_connection(conn):
