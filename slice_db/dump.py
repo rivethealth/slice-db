@@ -120,6 +120,7 @@ async def dump(
             # https://github.com/MagicStack/asyncpg/issues/743
             # readonly=True
         ):
+            await conn.execute("SET statement_timeout TO 0")
             row_counts = await _set_row_counts(conn, list(schema.tables()))
 
             if params.parallelism == 1 and not params.strategy.new_transactions:
