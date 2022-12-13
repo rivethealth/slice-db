@@ -27,7 +27,7 @@ from .dump import (
 from .log import TRACE
 from .transform import TableTransformer
 
-MAX_SIZE = 1000 * 250
+MAX_SIZE = 1000 * 50
 
 
 class TempTableStrategy(DumpStrategy):

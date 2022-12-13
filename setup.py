@@ -19,7 +19,7 @@ setuptools.setup(
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
     ],
-    description="Translate between MLLP and HTTP",
+    description="Capture, scrub, and restore subsets of PostgreSQL databases.",
     entry_points={
         "console_scripts": [
             "slicedb=slice_db.cli.main:main",
