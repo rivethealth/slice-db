@@ -153,6 +153,21 @@ def test_transform_field_json_path():
     assert result.decode("utf-8") == '{"example1":"axl","example2":"fwe"}\n'
 
 
+def test_transform_field_json_path_invalid():
+    result = run_process(
+        [
+            "slicedb",
+            "transform-field",
+            "--pepper",
+            "abc",
+            "--transforms",
+            '{"":{"class":"JsonPathTransform","config":[{"path":"example1","transform":"alphanumeric"},{"path":"example2","transform":"alphanumeric"}]},"alphanumeric":{"class":"AlphanumericTransform"}}',
+            '{"example1":{"subobj":"foo"},"example2":"bar"}',
+        ]
+    )
+    assert result.decode("utf-8") == '{"example1":{"subobj":"foo"},"example2":"fwe"}\n'
+
+
 def test_transform_field_null():
     result = run_process(
         [
