@@ -122,7 +122,7 @@ class _TableTask:
                     await self._process_reference(
                         conn, reference, DumpReferenceDirection.REVERSE
                     )
-
+                await conn.execute("SET statement_timeout TO 0")
                 await _dump_data(conn, self.segment.table, self.segment.row_ids, tmp)
 
             tmp.seek(0)

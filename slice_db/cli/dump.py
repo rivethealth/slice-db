@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import secrets
+import traceback
 
 import asyncpg
 
@@ -55,6 +56,9 @@ async def dump_main(args):
         )
 
         await dump(roots, io, params)
+    except:
+        print("Exception caught in cli/dump.py:");
+        traceback.print_exc()
     finally:
         await pool.close()
 
