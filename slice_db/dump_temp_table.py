@@ -256,7 +256,6 @@ async def _discover_reference(
     direction: DumpReferenceDirection,
     result,
 ) -> typing.List[Tid]:
-
     """
     Discover, using reference
     """

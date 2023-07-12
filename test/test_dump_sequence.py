@@ -15,7 +15,6 @@ _SCHEMA_SQL = """
 
 
 def test_dump_sequence(pg_database, snapshot):
-
     with temp_file("schema-") as schema_file, temp_file("output-") as output_file:
         with connection("") as conn, transaction(conn) as cur:
             cur.execute(_SCHEMA_SQL)
