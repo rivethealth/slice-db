@@ -195,6 +195,7 @@ async def _discover_table_condition(
     logging.log(TRACE, f"Finding rows from table %s", table.id)
     start = time.perf_counter()
 
+    await conn.execute("SET statement_timeout TO 0")
     query = f"""
         SELECT ctid
         FROM {table.sql}
@@ -293,7 +294,8 @@ async def _discover_reference(
         ORDER BY 1
     """
     found_ids = [id_ for id_, in await conn.fetch(query)]
-
+    
+    await conn.execute("SET statement_timeout TO 0")
     new_segments = []
     for i in range(0, len(found_ids), MAX_SIZE):
         await asyncio.sleep(0)
