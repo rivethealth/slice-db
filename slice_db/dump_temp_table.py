@@ -294,7 +294,7 @@ async def _discover_reference(
         ORDER BY 1
     """
     found_ids = [id_ for id_, in await conn.fetch(query)]
-    
+
     await conn.execute("SET statement_timeout TO 0")
     new_segments = []
     for i in range(0, len(found_ids), MAX_SIZE):
