@@ -1,3 +1,4 @@
+import calendar
 import datetime
 import typing
 
@@ -21,7 +22,7 @@ class _DateYearTransformer(Transformer):
         random = create_random(text.encode("utf-8") + self._pepper)
 
         date = datetime.date.fromisoformat(text)
-        year = datetime.date(date.year + 1, 1, 1) - datetime.date(date.year, 1, 1)
-        days = random.randrange(year.days)
+        days_in_year = 366 if calendar.isleap(date.year) else 365
+        days = random.randrange(days_in_year)
         date = datetime.date(date.year, 1, 1) + datetime.timedelta(days=days)
         return date.isoformat()

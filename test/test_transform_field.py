@@ -108,6 +108,21 @@ def test_transform_field_date_year():
     assert result.decode("utf-8") == "2005-08-19\n"
 
 
+def test_transform_field_date_year_edge_case():
+    result = run_process(
+        [
+            "slicedb",
+            "transform-field",
+            "--pepper",
+            "abc",
+            "--transforms",
+            '{"":{"class":"DateYearTransform"}}',
+            "9999-03-09",
+        ]
+    )
+    assert result.decode("utf-8") == "9999-01-23\n"
+
+
 def test_transform_field_geozip():
     result = run_process(
         [
