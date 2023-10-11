@@ -45,6 +45,22 @@ class _ConstTransformer:
 
         return self._value
 
+class IncrementingConstTransform(Transform):
+    def create(self, context, pepper, params):
+        return _IncrementingConstTransform(params)
+
+
+class _IncrementingConstTransform:
+    def __init__(self, value):
+        self._count = 0
+        self._value = value
+
+    def transform(self, text: typing.Optional[str]):
+        if text is None:
+            return None
+        self._count = self._count+1
+        return self._value + ' ' + str(self._count)
+
 
 class NullTransform(Transform):
     def create(self, context, pepper, params):

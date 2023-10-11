@@ -14,7 +14,8 @@ _SCHEMA_SQL = """
     CREATE TABLE child (
         id int PRIMARY KEY,
         parent_id int REFERENCES parent (id),
-        name text NOT NULL
+        name text NOT NULL,
+        incrementing_text text NOT NULL
     );
 """
 
@@ -36,7 +37,7 @@ _SCHEMA_JSON = {
             "sequences": [],
         },
         "public.child": {
-            "columns": ["id", "parent_id", "name"],
+            "columns": ["id", "parent_id", "name", "incrementing_text"],
             "name": "child",
             "schema": "public",
             "sequences": [],
@@ -45,8 +46,8 @@ _SCHEMA_JSON = {
 }
 
 _TRANSFORM_JSON = {
-    "tables": {"public.child": {"columns": {"name": "given_name"}}},
-    "transforms": {"given_name": {"class": "GivenNameTransform"}},
+    "tables": {"public.child": {"columns": {"name": "given_name", "incrementing_text":"incrementingConst"}}},
+    "transforms": {"given_name": {"class": "GivenNameTransform"}, "incrementingConst": {"class": "IncrementingConstTransform","config":"DEMO"}},
 }
 
 
@@ -62,8 +63,8 @@ def test_dump_transform(pg_database, snapshot):
                     INSERT INTO parent (id)
                     VALUES (1), (2);
 
-                    INSERT INTO child (id, parent_id, name)
-                    VALUES (1, 1, 'John'), (2, 1, 'Sue'), (3, 2, 'Bill');
+                    INSERT INTO child (id, parent_id, name, incrementing_text)
+                    VALUES (1, 1, 'John','foo'), (2, 1, 'Sue','bar'), (3, 2, 'Bill','baz');
                 """
             )
 
@@ -116,4 +117,4 @@ def test_dump_transform(pg_database, snapshot):
 
             cur.execute("SELECT * FROM child ORDER BY id")
             result = cur.fetchall()
-            assert result == [(1, 1, "Patsy"), (2, 1, "Myron")]
+            assert result == [(1, 1, "Patsy","DEMO 1"), (2, 1, "Myron", "DEMO 2")]
