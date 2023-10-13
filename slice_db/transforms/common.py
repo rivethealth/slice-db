@@ -57,8 +57,8 @@ class _IncrementingConstTransform:
         self._exclude = config.get("exclude")
 
     def transform(self, text: typing.Optional[str]):
-        if text is None:
-            return None
+        if not text:
+            return text
 
         if self._exclude is not None and self._exclude in text:
             return text
