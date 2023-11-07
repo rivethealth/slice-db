@@ -92,6 +92,20 @@ def test_transform_field_const():
     )
     assert result.decode("utf-8") == "X\n"
 
+def test_transform_field_replace():
+    result = run_process(
+        [
+            "slicedb",
+            "transform-field",
+            "--pepper",
+            "abc",
+            "--transforms",
+            '{"":{"class":"ReplaceTransform","config":{"old":"a","new":"b"}}}',
+            "abaca",
+        ]
+    )
+    assert result.decode("utf-8") == "bbbcb\n"
+
 
 def test_transform_field_date_year():
     result = run_process(

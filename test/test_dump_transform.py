@@ -47,7 +47,7 @@ _SCHEMA_JSON = {
 
 _TRANSFORM_JSON = {
     "tables": {"public.child": {"columns": {"name": "given_name", "incrementing_text":"incrementingConst"}}},
-    "transforms": {"given_name": {"class": "GivenNameTransform"}, "incrementingConst": {"class": "IncrementingConstTransform","config":"DEMO"}},
+    "transforms": {"given_name": {"class": "GivenNameTransform"}, "incrementingConst": {"class": "IncrementingConstTransform","config":{"value":"DEMO"}}},
 }
 
 

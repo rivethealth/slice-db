@@ -1,6 +1,7 @@
 import hashlib
 import random
 import typing
+import re
 
 from ..transform import Transform, TransformContext, Transformer
 
@@ -44,6 +45,23 @@ class _ConstTransformer:
             return None
 
         return self._value
+
+class ReplaceTransform(Transform):
+    def create(self, context, pepper, params):
+        return _ReplaceTransform(params)
+
+
+class _ReplaceTransform:
+    def __init__(self, config):
+        self._old = config.get("old")
+        self._new = config.get("new")
+
+    def transform(self, text: typing.Optional[str]):
+        if text is None:
+            return None
+
+        regex = re.compile(re.escape(self._old), re.IGNORECASE)
+        return regex.sub(self._new, text)
 
 class IncrementingConstTransform(Transform):
     def create(self, context, pepper, config):
