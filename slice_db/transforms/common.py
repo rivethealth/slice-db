@@ -16,7 +16,7 @@ def create_random(bytes):
 
 
 class ComposeTransform(Transform):
-    def create(self, context: TransformContext, config):
+    def create(self, context: TransformContext, pepper: bytes, config):
         transforms = [context.get_transform(name) for name in config]
         return ComposeTransformer(transforms)
 
