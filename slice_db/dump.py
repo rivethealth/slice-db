@@ -348,6 +348,18 @@ async def _pg_dump_section(section: str, out: typing.BinaryIO) -> str:
     logging.debug("Dumped %s schema (%.3fs)", section, end - start)
 
 
+def _filter_psql_commands(text: str) -> str:
+    """
+    Remove psql meta-commands that cannot be executed via asyncpg.
+    PostgreSQL 16+ pg_dump outputs \\restrict and \\unrestrict commands.
+    """
+    return "\n".join(
+        line
+        for line in text.split("\n")
+        if not line.strip().startswith(("\\restrict", "\\unrestrict"))
+    )
+
+
 class _DiscoveryResult:
     """
     Discovered IDs
@@ -449,6 +461,8 @@ class _SchemaTask:
             await _pg_dump_section(self.section, tmp)
             tmp.seek(0)
             text = tmp.read().decode()
+        # Filter psql meta-commands (e.g., \restrict, \unrestrict from PG16+)
+        text = _filter_psql_commands(text)
         # last statement is comment-only and messes up asyncpg
         for i, statement in enumerate(list(parse_statements(text))[:-1]):
             self.result.section_counts[self.section] += 1

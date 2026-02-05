@@ -6,6 +6,8 @@ from file import temp_file
 from pg import connection, transaction
 from process import run_process
 
+from slice_db.dump import _filter_psql_commands
+
 _SCHEMA_SQL = """
     CREATE TABLE parent (
         id int PRIMARY KEY
@@ -164,3 +166,36 @@ def test_dump_schema(pg_database, snapshot):
             cur.execute("TABLE child")
             result = cur.fetchall()
             assert result == [(1, 1), (2, 1)]
+
+
+def test_filter_psql_commands():
+    """Test that psql meta-commands are filtered from pg_dump output."""
+    text = """-- some comment
+\\restrict
+CREATE TABLE foo (id int);
+\\unrestrict
+-- another comment"""
+
+    result = _filter_psql_commands(text)
+
+    assert "\\restrict" not in result
+    assert "\\unrestrict" not in result
+    assert "CREATE TABLE foo" in result
+    assert "-- some comment" in result
+    assert "-- another comment" in result
+
+
+def test_filter_psql_commands_empty():
+    """Test filtering empty string."""
+    assert _filter_psql_commands("") == ""
+
+
+def test_filter_psql_commands_no_commands():
+    """Test that text without psql commands is unchanged."""
+    text = """CREATE TABLE foo (id int);
+-- comment
+ALTER TABLE foo ADD COLUMN bar text;"""
+
+    result = _filter_psql_commands(text)
+
+    assert result == text
