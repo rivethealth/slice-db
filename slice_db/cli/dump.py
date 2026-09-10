@@ -7,6 +7,7 @@ import asyncpg
 
 from ..common import setup_connection
 from ..dump import DumpIo, DumpParams, OutputType, dump
+from ..dump_memory import MemoryStrategy
 from ..dump_temp_table import TempTableStrategy
 from ..formats.dump import DumpRoot
 from ..pg import server_settings, set_tid_codec
@@ -46,7 +47,7 @@ async def dump_main(args):
         if args.temp_tables:
             strategy = TempTableStrategy()
         else:
-            raise Exception("--no-temp-tables not supported")
+            strategy = MemoryStrategy()
         params = DumpParams(
             include_schema=args.include_schema,
             parallelism=args.jobs,
