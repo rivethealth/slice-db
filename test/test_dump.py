@@ -106,6 +106,147 @@ def test_dump(pg_database, snapshot):
             assert result == [(1, 1), (2, 1)]
 
 
+def test_dump_no_temp_tables(pg_database, snapshot):
+    with temp_file("schema-") as schema_file, temp_file("output-") as output_file:
+        with connection("") as conn, transaction(conn) as cur:
+            cur.execute(_SCHEMA_SQL)
+
+            cur.execute(
+                """
+                    INSERT INTO parent (id)
+                    VALUES (1), (2);
+
+                    INSERT INTO child (id, parent_id)
+                    VALUES (1, 1), (2, 1), (3, 2);
+                """
+            )
+
+        with open(schema_file, "w") as f:
+            json.dump(_SCHEMA_JSON, f)
+
+        run_process(
+            [
+                "slicedb",
+                "dump",
+                "--no-table-tables",
+                "--schema",
+                schema_file,
+                "--root",
+                "public.parent",
+                "id = 1",
+                "--output",
+                output_file,
+            ]
+        )
+
+        with connection("") as conn, transaction(conn) as cur:
+            cur.execute(
+                """
+                    DELETE FROM child;
+
+                    DELETE FROM parent;
+                """
+            )
+
+        run_process(
+            [
+                "slicedb",
+                "restore",
+                "--input",
+                output_file,
+            ]
+        )
+
+        with connection("") as conn, transaction(conn) as cur:
+            cur.execute("TABLE parent")
+            result = cur.fetchall()
+            assert result == [(1,)]
+
+            cur.execute("TABLE child")
+            result = cur.fetchall()
+            assert result == [(1, 1), (2, 1)]
+
+
+def test_dump_no_temp_tables_readonly(pg_database, snapshot):
+    """
+    --no-table-tables must work against a read-only connection (e.g. a
+    physical replica), since that's the whole reason it exists: the default
+    strategy stages discovered ids in a session temp table, which a
+    replica rejects.
+    """
+    with temp_file("schema-") as schema_file, temp_file("output-") as output_file:
+        with connection("") as conn, transaction(conn) as cur:
+            cur.execute(_SCHEMA_SQL)
+
+            cur.execute(
+                """
+                    INSERT INTO parent (id)
+                    VALUES (1), (2);
+
+                    INSERT INTO child (id, parent_id)
+                    VALUES (1, 1), (2, 1), (3, 2);
+                """
+            )
+
+            cur.execute("DROP ROLE IF EXISTS test_readonly")
+            cur.execute("CREATE ROLE test_readonly LOGIN")
+            cur.execute("GRANT SELECT ON ALL TABLES IN SCHEMA public TO test_readonly")
+            # Server-enforced, unlike PGOPTIONS which asyncpg (not
+            # libpq-based) doesn't read from the environment.
+            cur.execute(
+                "ALTER ROLE test_readonly SET default_transaction_read_only = on"
+            )
+
+        with open(schema_file, "w") as f:
+            json.dump(_SCHEMA_JSON, f)
+
+        env = dict(os.environ)
+        env["PGUSER"] = "test_readonly"
+
+        run_process(
+            [
+                "slicedb",
+                "dump",
+                "--no-table-tables",
+                "--schema",
+                schema_file,
+                "--root",
+                "public.parent",
+                "id = 1",
+                "--output",
+                output_file,
+            ],
+            env=env,
+        )
+
+        with connection("") as conn, transaction(conn) as cur:
+            cur.execute(
+                """
+                    DELETE FROM child;
+
+                    DELETE FROM parent;
+                """
+            )
+
+        run_process(
+            [
+                "slicedb",
+                "restore",
+                "--input",
+                output_file,
+            ]
+        )
+
+        with connection("") as conn, transaction(conn) as cur:
+            cur.execute("TABLE parent")
+            result = cur.fetchall()
+            assert result == [(1,)]
+
+            cur.execute("TABLE child")
+            result = cur.fetchall()
+            assert result == [(1, 1), (2, 1)]
+
+
 def test_dump_schema(pg_database, snapshot):
     with temp_file("schema-") as schema_file, temp_file("output-") as output_file:
         with connection("") as conn, transaction(conn) as cur:
