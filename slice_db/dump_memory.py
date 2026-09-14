@@ -40,7 +40,7 @@ class MemoryStrategy(DumpStrategy):
 
     @property
     def new_transactions(self):
-        return True
+        return False
 
     def start(self, dump: Dump, roots: typing.List[Root]):
         for root in roots:

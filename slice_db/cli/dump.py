@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import secrets
+import sys
 import traceback
 
 import asyncpg
@@ -47,6 +48,13 @@ async def dump_main(args):
         if args.temp_tables:
             strategy = TempTableStrategy()
         else:
+            if args.jobs > 1:
+                # Parallel dumping needs a shared exported snapshot across
+                # connections (see dump()); pg_export_snapshot() isn't
+                # supported on the read-only replicas this mode is for.
+                raise Exception(
+                    "--no-temp-tables does not support -j/--jobs > 1 -- pass -j 1"
+                )
             strategy = MemoryStrategy()
         params = DumpParams(
             include_schema=args.include_schema,
@@ -58,8 +66,8 @@ async def dump_main(args):
 
         await dump(roots, io, params)
     except:
-        print("Exception caught in cli/dump.py:")
         traceback.print_exc()
+        sys.exit(1)
     finally:
         await pool.close()
 
