@@ -40,7 +40,7 @@ slicedb schema > schema.yml
 Second, dump a slice:
 
 ```sh
-slicedb dump --root public.example 'WHERE id IN (7, 56, 234)' --schema schema.yml > slice.zip
+slicedb dump --root public.example 'id IN (7, 56, 234)' --schema schema.yml > slice.zip
 ```
 
 Third, restore that slice into another database:
