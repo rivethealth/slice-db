@@ -330,6 +330,8 @@ class _SqlOutput(_Output):
 async def _pg_dump_section(section: str, out: typing.BinaryIO) -> str:
     logging.log(TRACE, "Dumping %s schema", section)
     start = time.perf_counter()
+    # pg_dump writes to the fd directly, bypassing our buffer
+    out.flush()
     process = await asyncio.subprocess.create_subprocess_exec(
         "pg_dump",
         "-BO",
@@ -570,13 +572,13 @@ class Schema:
                 table = self._tables[reference_config.table]
             except KeyError:
                 raise Exception(
-                    f"No table {reference_config.table}, needed by reference {reference_config.id}"
+                    f"No table {reference_config.table}, needed by reference {id}"
                 )
             try:
                 reference_table = self._tables[reference_config.reference_table]
             except KeyError:
                 raise Exception(
-                    f"No table {reference_config.reference_table}, needed by reference {reference_config.id}"
+                    f"No table {reference_config.reference_table}, needed by reference {id}"
                 )
 
             reference = Reference(

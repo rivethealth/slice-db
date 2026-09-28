@@ -88,7 +88,9 @@ def test_dump_sql(pg_database, snapshot):
             )
 
         with open(output_file) as f:
-            print(f.read())
+            output = f.read()
+        print(output)
+        assert output.rindex("COPY ") < output.index("FOREIGN KEY")
 
         run_process(
             [
